@@ -24,42 +24,87 @@ class KafkaConnector:
     Encapsulates the connection to a kafka server and all the methods to interact with it.
     defines message serializer and deserializer for kafka messages. self.admin_client is used to manage topics and cluster health.
     :param bootstrap_servers The URL of the kafka server.
+    :param schema_registry_url Optional URL for the Confluent Schema Registry.
     """
 
-    def __init__(self, bootstrap_servers: str = "localhost:9092"):
+    def __init__(self, bootstrap_servers: str = "localhost:9092", schema_registry_url: Optional[str] = None):
         """Initialize the KafkaConnector.
         Args:
             bootstrap_servers: The URL of the kafka server.
+            schema_registry_url: Optional URL for the Confluent Schema Registry.
         """
         self.bootstrap_servers = bootstrap_servers
         self.admin_client: KafkaAdminClient = None
-        #self.group_id = "default-group"
         self.producers: Dict[str, AIOKafkaProducer] = {}
         self.consumers: Dict[str, AIOKafkaConsumer] = {}
 
-        # Serializers and deserializers for Kafka messages and keys
-        self.value_serializer = lambda v: json.dumps(v).encode('utf-8') if isinstance(v, dict) else str(v).encode('utf-8')
-        self.key_serializer = lambda k: k.encode('utf-8') if k else None
-        self.value_deserializer = lambda m: self._deserialize_msg(m) if m else None
-        self.key_deserializer = lambda k: k.decode('utf-8') if k else None
-    
+        # Schema Registry (optional)
+        self.schema_registry = None
+        if schema_registry_url:
+            from src.schema_registry import SchemaRegistryService
+            self.schema_registry = SchemaRegistryService(schema_registry_url)
+            logger.info(f"Schema Registry configured at {schema_registry_url}")
+
         # Initialize admin client for topic management and cluster health
         self.admin_client = KafkaAdminClient(bootstrap_servers=self.bootstrap_servers, client_id='kafka-admin-client')
 
-    def _deserialize_msg(self, msg):
-        """Deserialize a message from a Kafka message.
+    def _serialize_value(self, topic: str, value, schema_type: Optional[str] = None) -> bytes:
+        """Serialize a value, using Schema Registry if available and applicable.
         Args:
-            msg: Kafka message
+            topic: Kafka topic name.
+            value: Message value (dict or str).
+            schema_type: Optional schema type to force ("AVRO"). If None, auto-detects.
         Returns:
-            dict: Message as a dictionary
+            bytes: Serialized message bytes.
         """
-        if msg is None:
+        # If value is a string, try to parse as JSON dict for schema-aware encoding
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Attempt schema-aware serialization if registry is configured and value is a dict
+        if self.schema_registry and isinstance(value, dict):
+            result = self.schema_registry.serialize(topic, value)
+            if result is not None:
+                return result
+
+        # Fallback: JSON for dicts, string for everything else
+        if isinstance(value, dict):
+            return json.dumps(value).encode('utf-8')
+        return str(value).encode('utf-8')
+
+    def _deserialize_value(self, topic: str, raw: bytes):
+        """Deserialize a value, using Schema Registry if available.
+        Args:
+            topic: Kafka topic name.
+            raw: Raw message bytes.
+        Returns:
+            Deserialized value (dict or str).
+        """
+        if raw is None:
             return None
+
+        # Try schema-aware deserialization first
+        if self.schema_registry:
+            result = self.schema_registry.deserialize(topic, raw)
+            if result is not None:
+                return result
+
+        # Fallback: try JSON, then plain string
         try:
-            value = json.loads(msg.decode('utf-8'))
-        except json.JSONDecodeError:
-            value = msg.decode('utf-8')
-        return value   
+            return json.loads(raw.decode('utf-8'))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return raw.decode('utf-8', errors='replace')
+
+    def _serialize_key(self, key) -> bytes:
+        """Serialize a message key to bytes."""
+        return key.encode('utf-8') if key else None
+
+    def _deserialize_key(self, key: bytes) -> str:
+        """Deserialize a message key from bytes."""
+        return key.decode('utf-8') if key else None
     
     def get_admin_client(self) ->  KafkaAdminClient:
         """Get or create admin client.
@@ -234,7 +279,7 @@ class KafkaConnector:
         if session_id is None:
             session_id = f"producer_{uuid.uuid4().hex[:8]}"
         try:
-            self.producers[session_id] = AIOKafkaProducer(bootstrap_servers=self.bootstrap_servers, value_serializer=self.value_serializer, key_serializer=self.key_serializer)
+            self.producers[session_id] = AIOKafkaProducer(bootstrap_servers=self.bootstrap_servers)
             await self.producers[session_id].start()
             logger.info(f"get_or_create_producer: Kafka producer started, connected to {self.bootstrap_servers}")
             return session_id, self.producers[session_id]
@@ -260,21 +305,24 @@ class KafkaConnector:
             logger.error(f"close_producer: Error closing producer: {e}")
             return False
     
-    async def publish(self, topic: str, value:str, key: Optional[str] = None, session_id: Optional[str] = None ):
+    async def publish(self, topic: str, value: str, key: Optional[str] = None, session_id: Optional[str] = None, schema_type: Optional[str] = None):
         """Publish a message to the specified Kafka topic.
         Args:
             topic: Topic to publish to
             value: Message value
             key: Message key (optional)
             session_id: Session ID for the producer (optional)
+            schema_type: Schema type for encoding (e.g. "AVRO"). Auto-detects if None.
         """
         try:
             # Send message
             session_id, producer = await self.get_or_create_producer(session_id)
             if key is None:
                 key = f"msg_key_{uuid.uuid4().hex[:8]}"
-            
-            metadata = await producer.send_and_wait(topic, value=value, key=key)
+
+            serialized_value = self._serialize_value(topic, value, schema_type)
+            serialized_key = self._serialize_key(key)
+            metadata = await producer.send_and_wait(topic, value=serialized_value, key=serialized_key)
             logger.info(f"publish: Published message with session_id {session_id} and key {key} to topic {topic}")
             return metadata
         except Exception as e:
@@ -315,9 +363,8 @@ class KafkaConnector:
         if isinstance(topic, str):
             topics = [topic]
         try:
-            self.consumers[session_id] = AIOKafkaConsumer(*topics,bootstrap_servers=self.bootstrap_servers,
-            group_id=group_id,enable_auto_commit=True,
-            value_deserializer=self.value_deserializer, key_deserializer=self.key_deserializer)
+            self.consumers[session_id] = AIOKafkaConsumer(*topics, bootstrap_servers=self.bootstrap_servers,
+            group_id=group_id, enable_auto_commit=True)
             await self.consumers[session_id].start()
             logger.info(f"get_or_create_consumer: Kafka consumer started, subscribed to {topics}")
             
@@ -360,9 +407,9 @@ class KafkaConnector:
 
             for tp, msgs in batch.items():
                 for msg in msgs:
-                    logger.info(f"consume: Raw message received: {msg.value}")
-                    #processed_message = await self._process_message(msg)
-                    messages.append(msg.value)
+                    logger.info(f"consume: Raw message received from partition {tp.partition}")
+                    deserialized = self._deserialize_value(tp.topic, msg.value)
+                    messages.append(deserialized)
 
             return messages
 

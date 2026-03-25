@@ -13,3 +13,8 @@ test/test.py
 
 # Environment variables
 .env
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/

@@ -1,5 +1,8 @@
 # Kafka MCP Server
 
+![CI](https://github.com/rishirochan/kafka_mcp_server/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.13-blue)
+
 A Model Context Protocol (MCP) server that provides a comprehensive suite of tools for interacting with a Kafka cluster. This server enables LLMs and other MCP clients to manage topics, partitions, and message publishing/consumption directly.
 
 ## Features

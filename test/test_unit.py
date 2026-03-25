@@ -2,7 +2,6 @@ import unittest
 from unittest.mock import MagicMock, patch, AsyncMock
 import sys
 import os
-import asyncio
 
 # Ensure src is in path so we can import from src.service
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -14,7 +13,6 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
     def setUp(self, MockAdminClient):
         self.mock_admin_client = MockAdminClient.return_value
         self.connector = KafkaConnector("localhost:9092")
-        # Replace the real admin_client with our mock (safeguard, though patch should handle init)
         self.connector.admin_client = self.mock_admin_client
 
     def test_get_topics_success(self):
@@ -33,14 +31,12 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.connector.is_topic_exists('topic2'))
 
     def test_create_topic_success(self):
-        # Mock get_topics to return empty list first (topic doesn't exist)
         self.mock_admin_client.list_topics.return_value = []
         result = self.connector.create_topic('new_topic')
         self.assertTrue(result)
         self.mock_admin_client.create_topics.assert_called_once()
 
     def test_create_topic_exists(self):
-        # Mock get_topics to return list containing the topic
         self.mock_admin_client.list_topics.return_value = ['existing_topic']
         result = self.connector.create_topic('existing_topic')
         self.assertFalse(result)
@@ -60,72 +56,88 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
 
     @patch('src.service.AIOKafkaProducer')
     async def test_publish_success(self, MockProducer):
-        # Setup mock producer
         mock_producer_instance = AsyncMock()
         MockProducer.return_value = mock_producer_instance
         mock_producer_instance.start = AsyncMock()
         mock_producer_instance.stop = AsyncMock()
         mock_producer_instance.send_and_wait = AsyncMock(return_value="metadata")
-        
-        # We need to ensure the connector creates a new producer
-        # Passing None as session_id to generate a new one
+
         result = await self.connector.publish("test_topic", "value")
-        
+
         self.assertEqual(result, "metadata")
         mock_producer_instance.start.assert_called()
-        mock_producer_instance.send_and_wait.assert_called()
+        call_kwargs = mock_producer_instance.send_and_wait.call_args
+        self.assertIsInstance(call_kwargs.kwargs['value'], bytes)
+        self.assertIsInstance(call_kwargs.kwargs['key'], bytes)
         mock_producer_instance.stop.assert_called()
 
     @patch('src.service.AIOKafkaConsumer')
     async def test_consume_success(self, MockConsumer):
-         # Setup mock consumer
         mock_consumer_instance = AsyncMock()
         MockConsumer.return_value = mock_consumer_instance
         mock_consumer_instance.start = AsyncMock()
         mock_consumer_instance.stop = AsyncMock()
-        
-        # Mock getmany to return a dict of messages
+
+        # Consumer now receives raw bytes; _deserialize_value handles decoding
+        mock_tp = MagicMock()
+        mock_tp.topic = "test_topic"
+        mock_tp.partition = 0
         mock_msg = MagicMock()
-        mock_msg.value = "test_message"
+        mock_msg.value = b'test_message'
         mock_consumer_instance.getmany = AsyncMock(return_value={
-            "tp": [mock_msg]
+            mock_tp: [mock_msg]
         })
 
         result = await self.connector.consume("test_topic")
-        
+
         self.assertEqual(result, ["test_message"])
         mock_consumer_instance.start.assert_called()
         mock_consumer_instance.getmany.assert_called()
         mock_consumer_instance.stop.assert_called()
 
+    # ---- Serde tests ----
 
-    def test_deserialize_msg(self):
-        # Test JSON message
-        json_msg = b'{"key": "value"}'
-        self.assertEqual(self.connector._deserialize_msg(json_msg), {"key": "value"})
+    def test_deserialize_value_json(self):
+        result = self.connector._deserialize_value("topic", b'{"key": "value"}')
+        self.assertEqual(result, {"key": "value"})
 
-        # Test String message
-        str_msg = b'test_message'
-        self.assertEqual(self.connector._deserialize_msg(str_msg), "test_message")
+    def test_deserialize_value_plain_string(self):
+        result = self.connector._deserialize_value("topic", b'test_message')
+        self.assertEqual(result, "test_message")
 
-        # Test None
-        self.assertIsNone(self.connector._deserialize_msg(None))
-        
-        # Test malformed bytes that are still valid utf-8 but not valid json
-        # (covered by string message)
-        
-        # Test invalid utf-8 (should be returned as is because decode raises Exception and we catch it)
-        # Note: In the optimized code:
-        # try:
-        #     decoded_value = msg.decode('utf-8') -> Raises UnicodeDecodeError
-        #     return json.loads(decoded_value)
-        # except json.JSONDecodeError:
-        #     return decoded_value
-        # except Exception as e: -> Catches UnicodeDecodeError
-        #     return msg
-        
-        invalid_utf8 = b'\x80\x81' 
-        self.assertEqual(self.connector._deserialize_msg(invalid_utf8), invalid_utf8)
+    def test_deserialize_value_none(self):
+        self.assertIsNone(self.connector._deserialize_value("topic", None))
+
+    def test_deserialize_value_invalid_utf8(self):
+        result = self.connector._deserialize_value("topic", b'\x80\x81')
+        # Falls back to decode with errors='replace'
+        self.assertIsInstance(result, str)
+
+    def test_serialize_value_dict(self):
+        result = self.connector._serialize_value("topic", {"key": "value"})
+        self.assertEqual(result, b'{"key": "value"}')
+
+    def test_serialize_value_string(self):
+        result = self.connector._serialize_value("topic", "hello")
+        self.assertEqual(result, b'hello')
+
+    def test_serialize_value_json_string(self):
+        # A JSON string input should be parsed to dict then serialized
+        result = self.connector._serialize_value("topic", '{"key": "value"}')
+        self.assertEqual(result, b'{"key": "value"}')
+
+    def test_serialize_key(self):
+        self.assertEqual(self.connector._serialize_key("mykey"), b'mykey')
+
+    def test_serialize_key_none(self):
+        self.assertIsNone(self.connector._serialize_key(None))
+
+    def test_deserialize_key(self):
+        self.assertEqual(self.connector._deserialize_key(b'mykey'), "mykey")
+
+    def test_deserialize_key_none(self):
+        self.assertIsNone(self.connector._deserialize_key(None))
+
 
 if __name__ == "__main__":
     unittest.main()

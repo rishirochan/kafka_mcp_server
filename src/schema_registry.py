@@ -49,7 +49,9 @@ class SchemaRegistryService:
             "subject": registered.subject,
         }
 
-    def register_schema(self, subject: str, schema_str: str, schema_type: str = "AVRO") -> int:
+    def register_schema(
+        self, subject: str, schema_str: str, schema_type: str = "AVRO"
+    ) -> int:
         """Register a new schema for a subject.
 
         Returns:
@@ -107,7 +109,9 @@ class SchemaRegistryService:
             )
         return self._deserializers[schema_id]
 
-    def serialize(self, topic: str, data: dict, is_key: bool = False) -> Optional[bytes]:
+    def serialize(
+        self, topic: str, data: dict, is_key: bool = False
+    ) -> Optional[bytes]:
         """Serialize data using the Avro schema registered for the topic's subject.
 
         Args:
@@ -127,7 +131,9 @@ class SchemaRegistryService:
         ctx = SerializationContext(topic, field)
         return serializer(data, ctx)
 
-    def deserialize(self, topic: str, data: bytes, is_key: bool = False) -> Optional[dict]:
+    def deserialize(
+        self, topic: str, data: bytes, is_key: bool = False
+    ) -> Optional[dict]:
         """Deserialize Confluent wire-format Avro bytes.
 
         Inspects the first 5 bytes for the magic byte + schema ID header.
@@ -157,5 +163,7 @@ class SchemaRegistryService:
             ctx = SerializationContext(topic, field)
             return deserializer(data, ctx)
         except Exception as e:
-            logger.error(f"Failed to deserialize message with schema_id {schema_id}: {e}")
+            logger.error(
+                f"Failed to deserialize message with schema_id {schema_id}: {e}"
+            )
             return None

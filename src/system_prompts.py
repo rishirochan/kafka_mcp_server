@@ -1,6 +1,3 @@
-from datetime import datetime
-
-
 def hc_patient_json_schema():
     return """
   {

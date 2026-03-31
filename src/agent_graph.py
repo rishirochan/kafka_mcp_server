@@ -96,9 +96,7 @@ Also, decide if more user input is required, either because the data generator a
         SystemMessage(content=system_message),
         HumanMessage(content=user_message),
     ]
-    data_validator_response = _get_kafka_producer_llm().invoke(
-        data_validator_messages
-    )
+    data_validator_response = _get_kafka_producer_llm().invoke(data_validator_messages)
 
     return {
         "messages": [

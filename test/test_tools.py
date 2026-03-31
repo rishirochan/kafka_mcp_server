@@ -26,7 +26,7 @@ class TestTopicTools:
         result = await mcp_agent.ainvoke(
             {"messages": [{"role": "user", "content": "list all kafka topics"}]}
         )
-        last = result["messages"][-1]
+        result["messages"][-1]
         # The agent should have invoked get_topics and returned a response
         assert any(
             isinstance(m, ToolMessage) for m in result["messages"]

@@ -13,9 +13,7 @@ class State(BaseModel):
 
 
 class DataValidatorOutput(BaseModel):
-    feedback: str = Field(
-        description="Feedback on the data generator's response"
-    )
+    feedback: str = Field(description="Feedback on the data generator's response")
     success_criteria_met: bool = Field(
         description="Whether the success criteria have been met"
     )

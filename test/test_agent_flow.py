@@ -7,8 +7,7 @@ Integration tests require OPENAI_API_KEY and Docker Kafka.
 import json
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from unittest.mock import MagicMock
+from langchain_core.messages import AIMessage, HumanMessage
 
 from src.agent_models import State, DataValidatorOutput
 from src.agent_graph import (

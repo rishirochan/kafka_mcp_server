@@ -19,6 +19,8 @@ dependencies = [
     "mcp-server-fetch>=2025.4.7",
     "python-dotenv>=1.2.1",
     "setuptools>=80.9.0",
+    "langgraph>=0.2.0",
+    "jsonschema>=4.0.0",
 ]
 
 [dependency-groups]
@@ -27,12 +29,18 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
     "ruff>=0.8.0",
+    "pytest-timeout>=2.0.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
 asyncio_mode = "auto"
+markers = [
+    "integration: tests requiring Docker Kafka and/or Schema Registry",
+    "llm: tests requiring real LLM API calls (OPENAI_API_KEY)",
+    "schema_registry: tests requiring Schema Registry",
+]
 
 [tool.coverage.run]
 source = ["src"]
-omit = ["test/*", ".venv/*"]
+omit = ["test/*", ".venv/*", "src/main.py", "src/client.py", "src/prompt_template.py"]

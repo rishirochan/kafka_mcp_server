@@ -95,8 +95,19 @@ def main():
     # Check if the Kafka Docker container is running; start it if not.
     ensure_kafka_running()
 
-    # run the mcp servers
-    mcp_server.run(transport=args.transport)
+    # For SSE transport, add middleware and run with uvicorn
+    if args.transport == "sse":
+        import uvicorn
+        from auth import APIKeyMiddleware, KafkaHeaderMiddleware
+
+        app = mcp_server.sse_app()
+        # KafkaHeaderMiddleware extracts X-Kafka-* headers for BYOK
+        app.add_middleware(KafkaHeaderMiddleware)
+        if os.getenv("MCP_API_KEY"):
+            app.add_middleware(APIKeyMiddleware)
+        uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("MCP_SSE_PORT", "8000")))
+    else:
+        mcp_server.run(transport=args.transport)
 
 
 if __name__ == "__main__":

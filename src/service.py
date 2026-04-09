@@ -288,14 +288,11 @@ class KafkaConnector:
             if not self.producers[session_id]._closed:
                 return session_id, self.producers[session_id]
             else:
-                # return session_id, self.producers[session_id].start()
-                # Producer is closed, we need to create a new one
+                # Producer is closed; delete stale entry before re-creating
                 logger.info(
                     f"get_or_create_producer: Producer with session_id {session_id} is closed. Creating a new one."
                 )
-                # We can reuse the session_id or let the caller handle it.
-                # Here we reuse it but must re-instantiate because AIOKafkaProducer cannot be restarted easily.
-                pass
+                del self.producers[session_id]
 
         if session_id is None:
             session_id = f"producer_{uuid.uuid4().hex[:8]}"
@@ -364,10 +361,16 @@ class KafkaConnector:
             logger.info(
                 f"publish: Published message with session_id {session_id} and key {key} to topic {topic}"
             )
-            return metadata
+            return {
+                "status": "ok",
+                "topic": metadata.topic,
+                "partition": metadata.partition,
+                "offset": metadata.offset,
+                "timestamp": metadata.timestamp,
+            }
         except Exception as e:
             logger.error(f"publish: Error publishing message: {e}")
-            return None
+            return {"status": "error", "message": f"Failed to publish: {str(e)}"}
         finally:
             await self.close_producer(session_id)
 
@@ -396,11 +399,11 @@ class KafkaConnector:
             if not self.consumers[session_id]._closed:
                 return session_id, self.consumers[session_id]
             else:
-                # Consumer is closed, we need to create a new one
+                # Consumer is closed; delete stale entry before re-creating
                 logger.info(
                     f"get_or_create_consumer: Consumer with session_id {session_id} is closed. Creating a new one."
                 )
-                pass
+                del self.consumers[session_id]
 
         if session_id is None:
             session_id = f"consumer_{uuid.uuid4().hex[:8]}"
@@ -452,10 +455,14 @@ class KafkaConnector:
         topic: str,
         group_id: str = "default-group",
         session_id: Optional[str] = None,
+        max_messages: int = 10,
     ):
         """Consume messages from the specified Kafka topics.
         Args:
             topic: Topic to consume from
+            group_id: Consumer group ID
+            session_id: Optional session ID for consumer reuse
+            max_messages: Maximum number of messages to return
         """
         session_id, consumer = await self.get_or_create_consumer(
             topic, group_id, session_id
@@ -465,7 +472,7 @@ class KafkaConnector:
 
         try:
             # Get a batch of messages with timeout
-            batch = await consumer.getmany(timeout_ms=5000)
+            batch = await consumer.getmany(timeout_ms=5000, max_records=max_messages)
 
             for tp, msgs in batch.items():
                 for msg in msgs:
@@ -484,3 +491,33 @@ class KafkaConnector:
         finally:
             # Close consumer
             await self.close_consumer(session_id)
+
+    async def close(self):
+        """Close all producers, consumers, and the admin client.
+        Called during server lifespan teardown to ensure clean shutdown.
+        """
+        for session_id in list(self.producers.keys()):
+            try:
+                if not self.producers[session_id]._closed:
+                    await self.producers[session_id].stop()
+            except Exception as e:
+                logger.error(f"close: Error stopping producer {session_id}: {e}")
+            finally:
+                self.producers.pop(session_id, None)
+
+        for session_id in list(self.consumers.keys()):
+            try:
+                if not self.consumers[session_id]._closed:
+                    await self.consumers[session_id].stop()
+            except Exception as e:
+                logger.error(f"close: Error stopping consumer {session_id}: {e}")
+            finally:
+                self.consumers.pop(session_id, None)
+
+        try:
+            if self.admin_client is not None:
+                self.admin_client.close()
+        except Exception as e:
+            logger.error(f"close: Error closing admin client: {e}")
+
+        logger.info("close: KafkaConnector shut down cleanly")

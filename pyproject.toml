@@ -10,17 +10,22 @@ dependencies = [
     "confluent-kafka[avro,schemaregistry]>=2.6.0",
     "fastavro>=1.9.0",
     "kafka-python>=2.3.0",
+    "mcp>=1.25.0",
+    "python-dotenv>=1.2.1",
+    "setuptools>=80.9.0",
+    "jsonschema>=4.0.0",
+    "uvicorn>=0.30.0",
+]
+
+[project.optional-dependencies]
+agent = [
     "langchain>=1.2.3",
     "langchain-core>=1.2.7",
     "langchain-groq>=1.1.1",
     "langchain-mcp-adapters>=0.2.1",
     "langchain-openai>=1.1.7",
-    "mcp>=1.25.0",
-    "mcp-server-fetch>=2025.4.7",
-    "python-dotenv>=1.2.1",
-    "setuptools>=80.9.0",
     "langgraph>=0.2.0",
-    "jsonschema>=4.0.0",
+    "mcp-server-fetch>=2025.4.7",
 ]
 
 [dependency-groups]

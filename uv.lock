@@ -639,16 +639,21 @@ dependencies = [
     { name = "fastavro" },
     { name = "jsonschema" },
     { name = "kafka-python" },
+    { name = "mcp" },
+    { name = "python-dotenv" },
+    { name = "setuptools" },
+    { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+agent = [
     { name = "langchain" },
     { name = "langchain-core" },
     { name = "langchain-groq" },
     { name = "langchain-mcp-adapters" },
     { name = "langchain-openai" },
     { name = "langgraph" },
-    { name = "mcp" },
     { name = "mcp-server-fetch" },
-    { name = "python-dotenv" },
-    { name = "setuptools" },
 ]
 
 [package.dev-dependencies]
@@ -668,17 +673,19 @@ requires-dist = [
     { name = "fastavro", specifier = ">=1.9.0" },
     { name = "jsonschema", specifier = ">=4.0.0" },
     { name = "kafka-python", specifier = ">=2.3.0" },
-    { name = "langchain", specifier = ">=1.2.3" },
-    { name = "langchain-core", specifier = ">=1.2.7" },
-    { name = "langchain-groq", specifier = ">=1.1.1" },
-    { name = "langchain-mcp-adapters", specifier = ">=0.2.1" },
-    { name = "langchain-openai", specifier = ">=1.1.7" },
-    { name = "langgraph", specifier = ">=0.2.0" },
+    { name = "langchain", marker = "extra == 'agent'", specifier = ">=1.2.3" },
+    { name = "langchain-core", marker = "extra == 'agent'", specifier = ">=1.2.7" },
+    { name = "langchain-groq", marker = "extra == 'agent'", specifier = ">=1.1.1" },
+    { name = "langchain-mcp-adapters", marker = "extra == 'agent'", specifier = ">=0.2.1" },
+    { name = "langchain-openai", marker = "extra == 'agent'", specifier = ">=1.1.7" },
+    { name = "langgraph", marker = "extra == 'agent'", specifier = ">=0.2.0" },
     { name = "mcp", specifier = ">=1.25.0" },
-    { name = "mcp-server-fetch", specifier = ">=2025.4.7" },
+    { name = "mcp-server-fetch", marker = "extra == 'agent'", specifier = ">=2025.4.7" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "setuptools", specifier = ">=80.9.0" },
+    { name = "uvicorn", specifier = ">=0.30.0" },
 ]
+provides-extras = ["agent"]
 
 [package.metadata.requires-dev]
 dev = [

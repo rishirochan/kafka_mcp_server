@@ -27,18 +27,32 @@ The following tools are exposed by this server:
 | `publish` | Send a message to a Kafka topic (supports optional keys and session IDs). |
 | `consume` | Read messages from a topic (supports consumer groups and session IDs). |
 
+## Prerequisites
+
+- **Python 3.13+**
+- **[uv](https://docs.astral.sh/uv/)** package manager (or pip)
+- **Docker Desktop** installed and running (for local Kafka auto-start)
+- A running **Kafka broker** (local Docker or remote) at `BOOTSTRAP_SERVERS` (default: `localhost:9092`)
+- _Optional_: Confluent **Schema Registry** at `SCHEMA_REGISTRY_URL`
+
 ## Setup
 
 ### 1. Python Environment
-
-Ensure you have Python 3.10+ installed. This project uses `uv` for dependency management, but you can also use `pip`.
 
 ```bash
 # Using uv (recommended)
 uv sync
 
 # Using pip
-pip install -r requirements.txt
+pip install .
+```
+
+To install with the optional agent/LangGraph demo dependencies:
+
+```bash
+uv sync --extra agent
+# or
+pip install ".[agent]"
 ```
 
 ### 2. Infrastructure
@@ -51,6 +65,7 @@ A local Kafka cluster can be started using the provided Docker Compose files in 
 ```
 
 - **Kafka Broker**: `localhost:9092`
+- **Schema Registry**: `localhost:8081`
 - **Kafka UI**: [http://localhost:8080](http://localhost:8080)
 
 ## Usage
@@ -61,11 +76,47 @@ Run the MCP server using the following command:
 python src/main.py
 ```
 
+For SSE transport:
+
+```bash
+python src/main.py --transport sse
+```
+
+### Claude Desktop Configuration
+
+Add the following to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "kafka": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/kafka_mcp_server", "run", "src/main.py"],
+      "env": {
+        "BOOTSTRAP_SERVERS": "localhost:9092"
+      }
+    }
+  }
+}
+```
+
 ### Configuration
 
-Environment variables can be configured in a `.env` file (see `.env.example` if available, or create one with your Kafka connection details).
+Environment variables can be configured in a `.env` file:
 
-- `KAFKA_BOOTSTRAP_SERVERS`: Comma-separated list of Kafka brokers (default: `localhost:9092`).
+| Variable | Description | Default |
+| --- | --- | --- |
+| `BOOTSTRAP_SERVERS` | Comma-separated list of Kafka brokers | `localhost:9092` |
+| `SCHEMA_REGISTRY_URL` | Confluent Schema Registry URL | _(none)_ |
+| `MCP_API_KEY` | API key for SSE transport auth (optional) | _(none — no auth)_ |
+| `MCP_SSE_PORT` | Port for SSE transport | `8000` |
+
+### SSE API Key Authentication
+
+When running with `--transport sse`, set `MCP_API_KEY` to require authentication. Clients must provide the key via either:
+
+- `X-API-Key: <key>` header, or
+- `Authorization: Bearer <key>` header
 
 ## Development
 

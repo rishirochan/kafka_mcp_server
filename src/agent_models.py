@@ -1,7 +1,13 @@
 from typing import Annotated, List, Any, Optional
 
 from pydantic import BaseModel, Field
-from langgraph.graph.message import add_messages
+
+try:
+    from langgraph.graph.message import add_messages
+except ImportError:
+    # Fallback to allow parsing models even without langgraph
+    def add_messages(left, right):
+        return left + right
 
 
 class State(BaseModel):

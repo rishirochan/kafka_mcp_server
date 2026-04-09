@@ -14,7 +14,11 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from src.service import KafkaConnector
-from src.validation import validate_message_value, validate_schema_json, validate_topic_name
+from src.validation import (
+    validate_message_value,
+    validate_schema_json,
+    validate_topic_name,
+)
 
 # Setup logging
 logging.basicConfig(
@@ -134,11 +138,15 @@ async def configure_kafka(
     ctx: Context[ServerSession, AppContext],
     bootstrap_servers: Annotated[
         str,
-        Field(description="Comma-separated Kafka broker addresses, e.g. 'broker1:9092,broker2:9092'"),
+        Field(
+            description="Comma-separated Kafka broker addresses, e.g. 'broker1:9092,broker2:9092'"
+        ),
     ],
     schema_registry_url: Annotated[
         Optional[str],
-        Field(description="Optional Confluent Schema Registry URL, e.g. 'http://registry:8081'"),
+        Field(
+            description="Optional Confluent Schema Registry URL, e.g. 'http://registry:8081'"
+        ),
     ] = None,
 ):
     """Set up a per-session Kafka connection with the provided credentials.
@@ -269,7 +277,9 @@ def is_topic_exists(ctx: Context[ServerSession, AppContext], topic_name: str):
 @mcp_server.tool(
     "create_topic",
     description="Create a Kafka topic. No-ops if the topic already exists. Returns true on creation, false if already present.",
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True),
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=True
+    ),
 )
 def create_topic(
     ctx: Context[ServerSession, AppContext],
@@ -293,7 +303,9 @@ def create_topic(
         bool: True if the topic was created, False otherwise
     """
     validate_topic_name(topic_name)
-    return _kafka(ctx).create_topic(topic_name, num_partitions, replication_factor, configs)
+    return _kafka(ctx).create_topic(
+        topic_name, num_partitions, replication_factor, configs
+    )
 
 
 @mcp_server.tool(
@@ -315,7 +327,11 @@ async def delete_topic(ctx: Context[ServerSession, AppContext], topic_name: str)
             schema=ConfirmDelete,
         )
         if result.action != "accept" or not result.content.get("confirmed"):
-            return {"status": "cancelled", "topic": topic_name, "message": "Deletion cancelled."}
+            return {
+                "status": "cancelled",
+                "topic": topic_name,
+                "message": "Deletion cancelled.",
+            }
     except Exception:
         # Client does not support elicitation — proceed without confirmation
         pass
@@ -378,7 +394,9 @@ async def consume(
         List[str]: List of messages consumed
     """
     validate_topic_name(topic_name)
-    await ctx.log("info", f"Consuming from '{topic_name}' (group={group_id}, max={max_messages})")
+    await ctx.log(
+        "info", f"Consuming from '{topic_name}' (group={group_id}, max={max_messages})"
+    )
     return await _kafka(ctx).consume(topic_name, group_id, session_id, max_messages)
 
 
@@ -409,7 +427,10 @@ def list_schemas(ctx: Context[ServerSession, AppContext]):
     kafka_connector = _kafka(ctx)
     try:
         _require_schema_registry(kafka_connector)
-        return {"status": "ok", "subjects": kafka_connector.schema_registry.get_subjects()}
+        return {
+            "status": "ok",
+            "subjects": kafka_connector.schema_registry.get_subjects(),
+        }
     except ValueError as e:
         return {"status": "error", "message": str(e)}
 
@@ -465,8 +486,15 @@ def register_schema(
     kafka_connector = _kafka(ctx)
     try:
         _require_schema_registry(kafka_connector)
-        schema_id = kafka_connector.schema_registry.register_schema(subject, schema_str, schema_type)
-        return {"status": "ok", "schema_id": schema_id, "subject": subject, "schema_type": schema_type}
+        schema_id = kafka_connector.schema_registry.register_schema(
+            subject, schema_str, schema_type
+        )
+        return {
+            "status": "ok",
+            "schema_id": schema_id,
+            "subject": subject,
+            "schema_type": schema_type,
+        }
     except ValueError as e:
         return {"status": "error", "message": str(e)}
 
@@ -496,7 +524,11 @@ async def delete_schema(ctx: Context[ServerSession, AppContext], subject: str):
             schema=ConfirmDelete,
         )
         if result.action != "accept" or not result.content.get("confirmed"):
-            return {"status": "cancelled", "subject": subject, "message": "Deletion cancelled."}
+            return {
+                "status": "cancelled",
+                "subject": subject,
+                "message": "Deletion cancelled.",
+            }
     except Exception:
         # Client does not support elicitation — proceed without confirmation
         pass

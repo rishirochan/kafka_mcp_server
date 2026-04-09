@@ -7,6 +7,11 @@ Integration tests require OPENAI_API_KEY and Docker Kafka.
 import json
 
 import pytest
+
+langchain_core = pytest.importorskip("langchain_core")
+langchain_openai = pytest.importorskip("langchain_openai")
+langgraph = pytest.importorskip("langgraph")
+
 from langchain_core.messages import AIMessage, HumanMessage
 
 from src.agent_models import State, DataValidatorOutput

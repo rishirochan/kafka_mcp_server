@@ -46,7 +46,7 @@ def _session_key(ctx: Context) -> int:
     return id(ctx.session)
 
 
-def _kafka(ctx: Context) -> KafkaConnector:
+def _kafka(ctx: Optional[Context] = None) -> KafkaConnector:
     """Resolve the KafkaConnector for the current request.
 
     Lookup order:
@@ -54,6 +54,8 @@ def _kafka(ctx: Context) -> KafkaConnector:
       2. Global connector (from env vars at startup).
       3. Raise if REQUIRE_BYOK is enabled and neither is available.
     """
+    if ctx is None:
+        ctx = mcp_server.get_context()
     app: AppContext = ctx.request_context.lifespan_context
     key = _session_key(ctx)
 
@@ -464,7 +466,7 @@ def get_schema(
 
 @mcp_server.tool(
     "register_schema",
-    description="Register an Avro schema string for a subject. Returns the assigned schema_id. Reuses an existing schema_id if the schema is identical.",
+    description="Register a schema string for a subject. schema_type defaults to 'AVRO', but can be 'JSON' or 'PROTOBUF'. Returns the assigned schema_id. Reuses an existing schema_id if the schema is identical.",
     annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False),
 )
 def register_schema(
@@ -548,9 +550,9 @@ async def delete_schema(ctx: Context[ServerSession, AppContext], subject: str):
     description="All Kafka topic names in the cluster",
     mime_type="application/json",
 )
-async def resource_topics(ctx: Context) -> str:
+async def resource_topics() -> str:
     """Return all topic names as a JSON array."""
-    topics = _kafka(ctx).get_topics() or []
+    topics = _kafka().get_topics() or []
     return json.dumps(topics)
 
 
@@ -560,9 +562,9 @@ async def resource_topics(ctx: Context) -> str:
     description="Partition layout, replication factor, and ISR for a specific topic",
     mime_type="application/json",
 )
-async def resource_topic_detail(topic_name: str, ctx: Context) -> str:
+async def resource_topic_detail(topic_name: str) -> str:
     """Return partition details for a specific topic."""
-    detail = _kafka(ctx).get_partitions(topic_name)
+    detail = _kafka().get_partitions(topic_name)
     return json.dumps(detail)
 
 
@@ -572,9 +574,9 @@ async def resource_topic_detail(topic_name: str, ctx: Context) -> str:
     description="All subjects registered in the Schema Registry. Returns empty list if Schema Registry is not configured.",
     mime_type="application/json",
 )
-async def resource_schemas(ctx: Context) -> str:
+async def resource_schemas() -> str:
     """Return all schema subjects as a JSON array."""
-    kafka_connector = _kafka(ctx)
+    kafka_connector = _kafka()
     if kafka_connector.schema_registry is None:
         return json.dumps([])
     subjects = kafka_connector.schema_registry.get_subjects() or []

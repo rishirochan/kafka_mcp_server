@@ -12,15 +12,15 @@ langchain_core = pytest.importorskip("langchain_core")
 langchain_openai = pytest.importorskip("langchain_openai")
 langgraph = pytest.importorskip("langgraph")
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 
-from src.agent_models import State, DataValidatorOutput
-from src.agent_graph import (
+from src.agent_models import State, DataValidatorOutput  # noqa: E402
+from src.agent_graph import (  # noqa: E402
     format_conversation,
     data_generator_router,
     kafka_producer_router,
-)
-from src.system_prompts import hc_patient_json_schema
+)  # noqa: E402
+from src.system_prompts import hc_patient_json_schema  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ class TestFormatConversation:
             AIMessage(content=""),
         ]
         result = format_conversation(messages)
-        assert "[Tools use]" in result
+        assert "[Tool call]" in result
 
     def test_empty_messages(self):
         result = format_conversation([])
@@ -70,14 +70,14 @@ class TestDataGeneratorRouter:
 
 
 class TestKafkaProducerRouter:
-    def test_routes_to_tools_on_success(self):
+    def test_routes_to_end_on_success(self):
         state = State(
             messages=[AIMessage(content="ok")],
             success_criteria="test",
             success_criteria_met=True,
             user_input_needed=False,
         )
-        assert kafka_producer_router(state) == "tools"
+        assert kafka_producer_router(state) == "END"
 
     def test_routes_to_end_when_user_input_needed(self):
         state = State(
@@ -219,7 +219,7 @@ class TestFullGraphExecution:
 
         graph = build_agent_graph(mcp_tools)
         initial_state = {
-            "messages": "Generate 2 patient records",
+            "messages": [HumanMessage(content="Generate 2 patient records")],
             "success_criteria": "Generate valid patient data matching the JSON schema and produce to kafka topic 'test_agent_flow'",
             "feedback_on_work": None,
             "success_criteria_met": False,

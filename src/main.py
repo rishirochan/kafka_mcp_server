@@ -39,18 +39,19 @@ def _is_kafka_running() -> bool:
 def _start_kafka():
     """Start the Kafka Docker stack via docker compose and wait until ready."""
     print(
-        f"Kafka container '{KAFKA_CONTAINER}' is not running. Starting via Docker Compose..."
+        f"Kafka container '{KAFKA_CONTAINER}' is not running. Starting via Docker Compose...",
+        file=sys.stderr,
     )
     subprocess.run(["docker", "compose", "-f", COMPOSE_FILE, "up", "-d"], check=True)
-    print("Waiting for Kafka to become ready...", end="", flush=True)
+    print("Waiting for Kafka to become ready...", end="", flush=True, file=sys.stderr)
     deadline = time.time() + KAFKA_READY_TIMEOUT
     while time.time() < deadline:
         if _is_kafka_running():
-            print(" ready.")
+            print(" ready.", file=sys.stderr)
             return
-        print(".", end="", flush=True)
+        print(".", end="", flush=True, file=sys.stderr)
         time.sleep(2)
-    print()
+    print(file=sys.stderr)
     raise RuntimeError(
         f"Kafka did not become ready within {KAFKA_READY_TIMEOUT}s. "
         "Check 'docker compose logs' for details."
@@ -61,7 +62,10 @@ def ensure_kafka_running():
     """Check if Kafka Docker container is running; start it if not."""
     try:
         if _is_kafka_running():
-            print(f"Kafka container '{KAFKA_CONTAINER}' is already running.")
+            print(
+                f"Kafka container '{KAFKA_CONTAINER}' is already running.",
+                file=sys.stderr,
+            )
         else:
             _start_kafka()
     except FileNotFoundError:

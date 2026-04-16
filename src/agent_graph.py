@@ -1,8 +1,9 @@
 """LangGraph agent for healthcare data generation, validation, and Kafka production."""
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
@@ -41,12 +42,16 @@ def format_conversation(messages: List[Any]) -> str:
         if isinstance(message, HumanMessage):
             conversation += f"User: {message.content}\n"
         elif isinstance(message, AIMessage):
-            text = message.content or "[Tools use]"
+            text = message.content or "[Tool call]"
             conversation += f"Assistant: {text}\n"
+        elif isinstance(message, ToolMessage):
+            conversation += f"Tool result ({message.name}): {message.content}\n"
     return conversation
 
 
-def data_generator_node(state: State) -> Dict[str, Any]:
+def data_generator_node(
+    state: State, llm: Optional[BaseChatModel] = None
+) -> Dict[str, Any]:
     """Generate healthcare data based on success criteria and feedback."""
     system_message = data_generator_instructions(state.success_criteria)
     if state.feedback_on_work:
@@ -66,7 +71,8 @@ With this feedback, please continue the assignment, ensuring that you meet the s
     if not is_system_message:
         messages = [SystemMessage(content=system_message)] + messages
 
-    response = _get_data_generator_llm().invoke(messages)
+    active_llm = llm if llm is not None else _get_data_generator_llm()
+    response = active_llm.invoke(messages)
     return {
         "messages": [response],
     }
@@ -76,17 +82,18 @@ def kafka_producer_node(state: State) -> Dict[str, Any]:
     """Validate generated data and decide whether to produce to Kafka."""
     last_response = state.messages[-1].content
     system_message = kafka_producer_instructions(state.success_criteria)
-    user_message = f"""You are data validator for a conversation between the User and data generator agent. You decide what action to take based on the last response from the data generator.
-The entire conversation with the data generator agent, with the user's original request and all replies, is:
+    user_message = f"""You are a data validator for a conversation between the User and a data generator agent.
+The full conversation, including any tool calls and their results, is:
 {format_conversation(state.messages)}
 
 The success criteria for this assignment is:
 {state.success_criteria}
 
-And the final response from the data generator agent that you are evaluating is:
+The last entry in the conversation above is what you are evaluating:
 {last_response}
 
-Respond with your feedback, and decide if the success criteria is met by this response.
+If the last entry is a tool result (e.g. a Kafka publish confirmation), use the full conversation to determine whether the data was valid and the tool call succeeded.
+Respond with your feedback, and decide if the success criteria is met.
 Also, decide if more user input is required, either because the data generator agent has a question, needs clarification, or seems to be stuck and unable to answer without help.
 """
     if state.feedback_on_work:
@@ -121,9 +128,9 @@ def data_generator_router(state: State) -> str:
 
 
 def kafka_producer_router(state: State) -> str:
-    """Route after validation: to tools if success, END if user input needed, else retry."""
+    """Route after validation: END on success or user input needed, else retry."""
     if state.success_criteria_met:
-        return "tools"
+        return "END"
     elif state.user_input_needed:
         return "END"
     else:
@@ -139,8 +146,13 @@ def build_agent_graph(tools):
     Returns:
         Compiled StateGraph ready for invocation.
     """
+    llm_with_tools = ChatOpenAI(model="gpt-4o-mini").bind_tools(tools)
+
+    def _data_generator_node(state: State) -> Dict[str, Any]:
+        return data_generator_node(state, llm=llm_with_tools)
+
     graph_builder = StateGraph(State)
-    graph_builder.add_node("data_generator_node", data_generator_node)
+    graph_builder.add_node("data_generator_node", _data_generator_node)
     graph_builder.add_node("kafka_producer_node", kafka_producer_node)
     tool_node = ToolNode(tools)
     graph_builder.add_node("tools", tool_node)
@@ -148,19 +160,20 @@ def build_agent_graph(tools):
     graph_builder.add_conditional_edges(
         "data_generator_node",
         data_generator_router,
-        {"kafka_producer_node": "kafka_producer_node"},
+        {
+            "kafka_producer_node": "kafka_producer_node",
+            "tools": "tools",
+        },
     )
     graph_builder.add_conditional_edges(
         "kafka_producer_node",
         kafka_producer_router,
-        {"data_generator_node": "data_generator_node", "END": END},
+        {
+            "data_generator_node": "data_generator_node",
+            "END": END,
+        },
     )
-    graph_builder.add_conditional_edges(
-        "tools",
-        kafka_producer_router,
-        {"tools": "tools", END: END},
-    )
-    graph_builder.add_edge("tools", "kafka_producer_node")
+    graph_builder.add_edge("tools", "data_generator_node")
     graph_builder.add_edge(START, "data_generator_node")
 
     return graph_builder.compile()

@@ -28,9 +28,9 @@ class TestTopicTools:
         )
         result["messages"][-1]
         # The agent should have invoked get_topics and returned a response
-        assert any(
-            isinstance(m, ToolMessage) for m in result["messages"]
-        ), "Expected at least one ToolMessage from get_topics"
+        assert any(isinstance(m, ToolMessage) for m in result["messages"]), (
+            "Expected at least one ToolMessage from get_topics"
+        )
 
     async def test_create_and_delete_topic(self, mcp_agent, unique_topic_name):
         """Agent can create a topic, verify it exists, then delete it."""
@@ -117,7 +117,9 @@ class TestTopicTools:
             }
         )
         last_content = result["messages"][-1].content.lower()
-        assert "false" in last_content or "not" in last_content or "doesn" in last_content
+        assert (
+            "false" in last_content or "not" in last_content or "doesn" in last_content
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -199,9 +201,7 @@ class TestSchemaTools:
         )
         assert any(isinstance(m, ToolMessage) for m in result["messages"])
 
-    async def test_register_and_get_schema(
-        self, mcp_agent, require_schema_registry
-    ):
+    async def test_register_and_get_schema(self, mcp_agent, require_schema_registry):
         """Agent can register an Avro schema and retrieve it."""
         subject = f"test-schema-{__import__('uuid').uuid4().hex[:8]}-value"
         schema_str = json.dumps(

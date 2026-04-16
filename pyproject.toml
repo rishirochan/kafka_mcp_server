@@ -35,11 +35,14 @@ dev = [
     "pytest-cov>=6.0.0",
     "ruff>=0.8.0",
     "pytest-timeout>=2.0.0",
+    "starlette>=0.27.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 markers = [
     "integration: tests requiring Docker Kafka and/or Schema Registry",
     "llm: tests requiring real LLM API calls (OPENAI_API_KEY)",

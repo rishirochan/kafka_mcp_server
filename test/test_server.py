@@ -26,6 +26,7 @@ class TestSchemaToolGuards(unittest.IsolatedAsyncioTestCase):
 
     def test_list_schemas_no_registry(self):
         from src.server import list_schemas
+
         ctx, _ = _make_ctx(schema_registry=None)
         result = list_schemas(ctx)
         self.assertEqual(result["status"], "error")
@@ -33,18 +34,21 @@ class TestSchemaToolGuards(unittest.IsolatedAsyncioTestCase):
 
     def test_get_schema_no_registry(self):
         from src.server import get_schema
+
         ctx, _ = _make_ctx(schema_registry=None)
         result = get_schema(ctx, "test-value")
         self.assertEqual(result["status"], "error")
 
     def test_register_schema_no_registry(self):
         from src.server import register_schema
+
         ctx, _ = _make_ctx(schema_registry=None)
         result = register_schema(ctx, "test-value", '{"type":"string"}')
         self.assertEqual(result["status"], "error")
 
     async def test_delete_schema_no_registry(self):
         from src.server import delete_schema
+
         ctx, _ = _make_ctx(schema_registry=None)
         ctx.elicit = AsyncMock()
         result = await delete_schema(ctx, "test-value")
@@ -54,6 +58,7 @@ class TestSchemaToolGuards(unittest.IsolatedAsyncioTestCase):
 
     def test_list_schemas_with_registry(self):
         from src.server import list_schemas
+
         mock_registry = MagicMock()
         mock_registry.get_subjects.return_value = ["topic1-value"]
         ctx, _ = _make_ctx(schema_registry=mock_registry)
@@ -63,6 +68,7 @@ class TestSchemaToolGuards(unittest.IsolatedAsyncioTestCase):
 
     def test_get_schema_with_registry(self):
         from src.server import get_schema
+
         mock_registry = MagicMock()
         mock_registry.get_schema.return_value = {
             "schema_id": 1,
@@ -78,6 +84,7 @@ class TestSchemaToolGuards(unittest.IsolatedAsyncioTestCase):
 
     def test_register_schema_with_registry(self):
         from src.server import register_schema
+
         mock_registry = MagicMock()
         mock_registry.register_schema.return_value = 42
         ctx, _ = _make_ctx(schema_registry=mock_registry)
@@ -87,6 +94,7 @@ class TestSchemaToolGuards(unittest.IsolatedAsyncioTestCase):
 
     async def test_delete_schema_with_registry(self):
         from src.server import delete_schema
+
         mock_registry = MagicMock()
         mock_registry.delete_subject.return_value = [1, 2]
         ctx, _ = _make_ctx(schema_registry=mock_registry)
@@ -102,24 +110,28 @@ class TestToolInputValidation(unittest.IsolatedAsyncioTestCase):
 
     def test_describe_topic_rejects_empty_name(self):
         from src.server import describe_topic
+
         ctx, _ = _make_ctx()
         with self.assertRaises(ValueError):
             describe_topic(ctx, "")
 
     def test_describe_topic_rejects_invalid_chars(self):
         from src.server import describe_topic
+
         ctx, _ = _make_ctx()
         with self.assertRaises(ValueError):
             describe_topic(ctx, "topic with spaces")
 
     def test_create_topic_rejects_long_name(self):
         from src.server import create_topic
+
         ctx, _ = _make_ctx()
         with self.assertRaises(ValueError):
             create_topic(ctx, "a" * 250)
 
     async def test_publish_rejects_oversized_message(self):
         from src.server import publish
+
         ctx, _ = _make_ctx()
         ctx.log = AsyncMock()
         with self.assertRaises(ValueError):
@@ -127,6 +139,7 @@ class TestToolInputValidation(unittest.IsolatedAsyncioTestCase):
 
     def test_register_schema_rejects_invalid_json(self):
         from src.server import register_schema
+
         ctx, _ = _make_ctx()
         with self.assertRaises(ValueError):
             register_schema(ctx, "test-value", "not valid json")
@@ -137,6 +150,7 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
 
     def test_get_topics(self):
         from src.server import get_topics
+
         ctx, connector = _make_ctx()
         connector.get_topics.return_value = ["topic-a", "topic-b"]
         result = get_topics(ctx)
@@ -144,6 +158,7 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
 
     def test_describe_topic(self):
         from src.server import describe_topic
+
         ctx, connector = _make_ctx()
         connector.describe_topic.return_value = {"topic": "my-topic", "partitions": []}
         result = describe_topic(ctx, "my-topic")
@@ -152,6 +167,7 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
 
     def test_get_partitions(self):
         from src.server import get_partitions
+
         ctx, connector = _make_ctx()
         connector.get_partitions.return_value = {"partitions_count": 3}
         result = get_partitions(ctx, "my-topic")
@@ -160,26 +176,32 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
 
     def test_is_topic_exists_true(self):
         from src.server import is_topic_exists
+
         ctx, connector = _make_ctx()
         connector.is_topic_exists.return_value = True
         self.assertTrue(is_topic_exists(ctx, "my-topic"))
 
     def test_is_topic_exists_false(self):
         from src.server import is_topic_exists
+
         ctx, connector = _make_ctx()
         connector.is_topic_exists.return_value = False
         self.assertFalse(is_topic_exists(ctx, "my-topic"))
 
     def test_create_topic_delegates(self):
         from src.server import create_topic
+
         ctx, connector = _make_ctx()
         connector.create_topic.return_value = True
         result = create_topic(ctx, "new-topic", 3, 1, {"retention.ms": "1000"})
         self.assertTrue(result)
-        connector.create_topic.assert_called_once_with("new-topic", 3, 1, {"retention.ms": "1000"})
+        connector.create_topic.assert_called_once_with(
+            "new-topic", 3, 1, {"retention.ms": "1000"}
+        )
 
     async def test_delete_topic_confirmed(self):
         from src.server import delete_topic
+
         ctx, connector = _make_ctx()
         connector.delete_topic.return_value = True
         elicit_result = MagicMock()
@@ -192,6 +214,7 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
 
     async def test_delete_topic_cancelled(self):
         from src.server import delete_topic
+
         ctx, connector = _make_ctx()
         elicit_result = MagicMock()
         elicit_result.action = "accept"
@@ -203,6 +226,7 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
 
     async def test_delete_topic_elicitation_rejected(self):
         from src.server import delete_topic
+
         ctx, connector = _make_ctx()
         elicit_result = MagicMock()
         elicit_result.action = "reject"
@@ -214,6 +238,7 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
     async def test_delete_topic_elicitation_unsupported(self):
         """When client doesn't support elicitation, deletion proceeds."""
         from src.server import delete_topic
+
         ctx, connector = _make_ctx()
         connector.delete_topic.return_value = True
         ctx.elicit = AsyncMock(side_effect=Exception("not supported"))
@@ -222,15 +247,19 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
 
     async def test_publish_delegates(self):
         from src.server import publish
+
         ctx, connector = _make_ctx()
         connector.publish = AsyncMock(return_value={"status": "ok", "offset": 42})
         ctx.log = AsyncMock()
         result = await publish(ctx, "my-topic", "hello", "k1", "sess1", "AVRO")
         self.assertEqual(result["status"], "ok")
-        connector.publish.assert_called_once_with("my-topic", "hello", "k1", "sess1", "AVRO")
+        connector.publish.assert_called_once_with(
+            "my-topic", "hello", "k1", "sess1", "AVRO"
+        )
 
     async def test_consume_delegates(self):
         from src.server import consume
+
         ctx, connector = _make_ctx()
         connector.consume = AsyncMock(return_value=["msg1", "msg2"])
         ctx.log = AsyncMock()
@@ -240,6 +269,7 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
 
     async def test_delete_schema_confirmed(self):
         from src.server import delete_schema
+
         mock_registry = MagicMock()
         mock_registry.delete_subject.return_value = [1, 2, 3]
         ctx, _ = _make_ctx(schema_registry=mock_registry)
@@ -253,6 +283,7 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
 
     async def test_delete_schema_cancelled(self):
         from src.server import delete_schema
+
         mock_registry = MagicMock()
         ctx, _ = _make_ctx(schema_registry=mock_registry)
         elicit_result = MagicMock()
@@ -269,6 +300,7 @@ class TestPrompts(unittest.TestCase):
 
     def test_inspect_topic_prompt(self):
         from src.server import prompt_inspect_topic
+
         result = prompt_inspect_topic("my-topic")
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["role"], "user")
@@ -276,7 +308,10 @@ class TestPrompts(unittest.TestCase):
 
     def test_register_and_publish_prompt(self):
         from src.server import prompt_register_and_publish
-        result = prompt_register_and_publish("t1", '{"type":"string"}', '{"name":"Alice"}')
+
+        result = prompt_register_and_publish(
+            "t1", '{"type":"string"}', '{"name":"Alice"}'
+        )
         self.assertEqual(len(result), 1)
         self.assertIn("t1", result[0]["content"])
         self.assertIn('{"type":"string"}', result[0]["content"])

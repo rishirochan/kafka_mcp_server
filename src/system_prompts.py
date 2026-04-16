@@ -169,6 +169,7 @@ def data_generator_instructions(success_criteria: str):
           - Success Criteria: {success_criteria}
           - if success criteria is asking validate with JSON schema then use below JSON schema
           - JSON Schema: {json_schema}
+          - if success criteria requires producing data to a Kafka topic, use the available Kafka tools to produce the generated data to the specified topic
 
         - User Input
             - Provide the number of records to generate

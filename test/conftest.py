@@ -1,5 +1,6 @@
 """Shared fixtures for tests."""
 
+import asyncio
 import os
 import sys
 import uuid
@@ -8,6 +9,7 @@ import uuid
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
+import pytest_asyncio
 from dotenv import load_dotenv
 
 
@@ -37,9 +39,7 @@ def require_kafka():
 
     bootstrap = os.getenv("BOOTSTRAP_SERVERS", "localhost:9092")
     try:
-        admin = KafkaAdminClient(
-            bootstrap_servers=bootstrap, request_timeout_ms=5000
-        )
+        admin = KafkaAdminClient(bootstrap_servers=bootstrap, request_timeout_ms=5000)
         admin.close()
     except Exception:
         pytest.skip(f"Kafka not reachable at {bootstrap}")
@@ -66,9 +66,7 @@ def kafka_connector(require_kafka):
 
     bootstrap = os.getenv("BOOTSTRAP_SERVERS", "localhost:9092")
     schema_url = os.getenv("SCHEMA_REGISTRY_URL")
-    return KafkaConnector(
-        bootstrap_servers=bootstrap, schema_registry_url=schema_url
-    )
+    return KafkaConnector(bootstrap_servers=bootstrap, schema_registry_url=schema_url)
 
 
 # ---------------------------------------------------------------------------
@@ -76,33 +74,50 @@ def kafka_connector(require_kafka):
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="session")
-async def mcp_client(require_kafka):
-    """Start the Kafka MCP server via stdio and yield an MCP client session."""
+@pytest_asyncio.fixture(loop_scope="session")
+async def mcp_tools(require_kafka):
+    """Start the Kafka MCP server, open one persistent session, and yield tools."""
     from langchain_mcp_adapters.client import MultiServerMCPClient
+    from langchain_mcp_adapters.tools import load_mcp_tools
 
     client = MultiServerMCPClient(
         {
             "kafka": {
-                "command": "uv",
-                "args": ["run", "src/main.py"],
+                "command": sys.executable,
+                "args": ["src/main.py"],
                 "transport": "stdio",
             },
         }
     )
-    async with client as c:
-        yield c
+
+    ready = asyncio.Event()
+    shutdown = asyncio.Event()
+    holder: dict = {}
+
+    async def _run_session():
+        try:
+            async with client.session("kafka") as session:
+                holder["tools"] = await load_mcp_tools(session)
+                ready.set()
+                await shutdown.wait()
+        except Exception as exc:
+            holder["error"] = exc
+            ready.set()
+
+    task = asyncio.create_task(_run_session())
+    await ready.wait()
+    if "error" in holder:
+        raise holder["error"]
+
+    assert len(holder["tools"]) > 0, "No MCP tools loaded"
+    try:
+        yield holder["tools"]
+    finally:
+        shutdown.set()
+        await task
 
 
-@pytest.fixture(scope="session")
-async def mcp_tools(mcp_client):
-    """Load MCP tools from the running Kafka MCP server."""
-    tools = await mcp_client.get_tools()
-    assert len(tools) > 0, "No MCP tools loaded"
-    return tools
-
-
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def mcp_agent(mcp_tools, require_openai_key):
     """Create a LangChain agent backed by MCP tools (fresh per test)."""
     from langchain.agents import create_agent

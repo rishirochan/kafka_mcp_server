@@ -4,21 +4,22 @@ import sys
 import os
 
 # Ensure src is in path so we can import from src.service
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.service import KafkaConnector
 
+
 class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
-    @patch('src.service.KafkaAdminClient')
+    @patch("src.service.KafkaAdminClient")
     def setUp(self, MockAdminClient):
         self.mock_admin_client = MockAdminClient.return_value
         self.connector = KafkaConnector("localhost:9092")
         self.connector.admin_client = self.mock_admin_client
 
     def test_get_topics_success(self):
-        self.mock_admin_client.list_topics.return_value = ['topic1', 'topic2']
+        self.mock_admin_client.list_topics.return_value = ["topic1", "topic2"]
         topics = self.connector.get_topics()
-        self.assertEqual(topics, ['topic1', 'topic2'])
+        self.assertEqual(topics, ["topic1", "topic2"])
 
     def test_get_topics_failure(self):
         self.mock_admin_client.list_topics.side_effect = Exception("Kafka Error")
@@ -26,35 +27,35 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(topics)
 
     def test_is_topic_exists(self):
-        self.mock_admin_client.list_topics.return_value = ['topic1']
-        self.assertTrue(self.connector.is_topic_exists('topic1'))
-        self.assertFalse(self.connector.is_topic_exists('topic2'))
+        self.mock_admin_client.list_topics.return_value = ["topic1"]
+        self.assertTrue(self.connector.is_topic_exists("topic1"))
+        self.assertFalse(self.connector.is_topic_exists("topic2"))
 
     def test_create_topic_success(self):
         self.mock_admin_client.list_topics.return_value = []
-        result = self.connector.create_topic('new_topic')
+        result = self.connector.create_topic("new_topic")
         self.assertTrue(result)
         self.mock_admin_client.create_topics.assert_called_once()
 
     def test_create_topic_exists(self):
-        self.mock_admin_client.list_topics.return_value = ['existing_topic']
-        result = self.connector.create_topic('existing_topic')
+        self.mock_admin_client.list_topics.return_value = ["existing_topic"]
+        result = self.connector.create_topic("existing_topic")
         self.assertFalse(result)
         self.mock_admin_client.create_topics.assert_not_called()
 
     def test_delete_topic_success(self):
-        self.mock_admin_client.list_topics.return_value = ['topic_to_delete']
-        result = self.connector.delete_topic('topic_to_delete')
+        self.mock_admin_client.list_topics.return_value = ["topic_to_delete"]
+        result = self.connector.delete_topic("topic_to_delete")
         self.assertTrue(result)
         self.mock_admin_client.delete_topics.assert_called_once()
 
     def test_delete_topic_not_found(self):
         self.mock_admin_client.list_topics.return_value = []
-        result = self.connector.delete_topic('non_existent')
+        result = self.connector.delete_topic("non_existent")
         self.assertFalse(result)
         self.mock_admin_client.delete_topics.assert_not_called()
 
-    @patch('src.service.AIOKafkaProducer')
+    @patch("src.service.AIOKafkaProducer")
     async def test_publish_success(self, MockProducer):
         mock_producer_instance = AsyncMock()
         MockProducer.return_value = mock_producer_instance
@@ -75,11 +76,11 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["offset"], 5)
         mock_producer_instance.start.assert_called()
         call_kwargs = mock_producer_instance.send_and_wait.call_args
-        self.assertIsInstance(call_kwargs.kwargs['value'], bytes)
-        self.assertIsInstance(call_kwargs.kwargs['key'], bytes)
+        self.assertIsInstance(call_kwargs.kwargs["value"], bytes)
+        self.assertIsInstance(call_kwargs.kwargs["key"], bytes)
         mock_producer_instance.stop.assert_called()
 
-    @patch('src.service.AIOKafkaConsumer')
+    @patch("src.service.AIOKafkaConsumer")
     async def test_consume_success(self, MockConsumer):
         mock_consumer_instance = AsyncMock()
         MockConsumer.return_value = mock_consumer_instance
@@ -91,10 +92,8 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         mock_tp.topic = "test_topic"
         mock_tp.partition = 0
         mock_msg = MagicMock()
-        mock_msg.value = b'test_message'
-        mock_consumer_instance.getmany = AsyncMock(return_value={
-            mock_tp: [mock_msg]
-        })
+        mock_msg.value = b"test_message"
+        mock_consumer_instance.getmany = AsyncMock(return_value={mock_tp: [mock_msg]})
 
         result = await self.connector.consume("test_topic")
 
@@ -110,14 +109,14 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {"key": "value"})
 
     def test_deserialize_value_plain_string(self):
-        result = self.connector._deserialize_value("topic", b'test_message')
+        result = self.connector._deserialize_value("topic", b"test_message")
         self.assertEqual(result, "test_message")
 
     def test_deserialize_value_none(self):
         self.assertIsNone(self.connector._deserialize_value("topic", None))
 
     def test_deserialize_value_invalid_utf8(self):
-        result = self.connector._deserialize_value("topic", b'\x80\x81')
+        result = self.connector._deserialize_value("topic", b"\x80\x81")
         # Falls back to decode with errors='replace'
         self.assertIsInstance(result, str)
 
@@ -127,7 +126,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
 
     def test_serialize_value_string(self):
         result = self.connector._serialize_value("topic", "hello")
-        self.assertEqual(result, b'hello')
+        self.assertEqual(result, b"hello")
 
     def test_serialize_value_json_string(self):
         # A JSON string input should be parsed to dict then serialized
@@ -135,23 +134,22 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, b'{"key": "value"}')
 
     def test_serialize_key(self):
-        self.assertEqual(self.connector._serialize_key("mykey"), b'mykey')
+        self.assertEqual(self.connector._serialize_key("mykey"), b"mykey")
 
     def test_serialize_key_none(self):
         self.assertIsNone(self.connector._serialize_key(None))
 
     def test_deserialize_key(self):
-        self.assertEqual(self.connector._deserialize_key(b'mykey'), "mykey")
+        self.assertEqual(self.connector._deserialize_key(b"mykey"), "mykey")
 
     def test_deserialize_key_none(self):
         self.assertIsNone(self.connector._deserialize_key(None))
 
-
     # ---- Schema Registry init ----
 
-    @patch('src.service.KafkaAdminClient')
+    @patch("src.service.KafkaAdminClient")
     def test_init_with_schema_registry(self, MockAdmin):
-        with patch('src.service.KafkaConnector.__init__', lambda self, *a, **kw: None):
+        with patch("src.service.KafkaConnector.__init__", lambda self, *a, **kw: None):
             connector = KafkaConnector.__new__(KafkaConnector)
         connector.bootstrap_servers = "localhost:9092"
         connector.admin_client = MockAdmin.return_value
@@ -159,8 +157,9 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         connector.consumers = {}
         connector.schema_registry = None
         # Manually test the branch
-        with patch.dict('sys.modules', {'src.schema_registry': MagicMock()}):
+        with patch.dict("sys.modules", {"src.schema_registry": MagicMock()}):
             from src.schema_registry import SchemaRegistryService
+
             connector.schema_registry = SchemaRegistryService("http://localhost:8081")
         self.assertIsNotNone(connector.schema_registry)
 
@@ -170,7 +169,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         result = self.connector.get_admin_client()
         self.assertEqual(result, self.mock_admin_client)
 
-    @patch('src.service.KafkaAdminClient')
+    @patch("src.service.KafkaAdminClient")
     def test_get_admin_client_creates_new(self, MockAdminClient):
         self.connector.admin_client = None
         result = self.connector.get_admin_client()
@@ -180,7 +179,9 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
     # ---- describe_topic ----
 
     def test_describe_topic_success(self):
-        self.mock_admin_client.describe_topics.return_value = [{"topic": "t1", "partitions": []}]
+        self.mock_admin_client.describe_topics.return_value = [
+            {"topic": "t1", "partitions": []}
+        ]
         result = self.connector.describe_topic("t1")
         self.assertEqual(result[0]["topic"], "t1")
 
@@ -197,13 +198,15 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
     # ---- get_partitions ----
 
     def test_get_partitions_success(self):
-        self.mock_admin_client.describe_topics.return_value = [{
-            "topic": "t1",
-            "partitions": [
-                {"partition": 0, "leader": 1, "replicas": [1], "isr": [1]},
-                {"partition": 1, "leader": 1, "replicas": [1], "isr": [1]},
-            ]
-        }]
+        self.mock_admin_client.describe_topics.return_value = [
+            {
+                "topic": "t1",
+                "partitions": [
+                    {"partition": 0, "leader": 1, "replicas": [1], "isr": [1]},
+                    {"partition": 1, "leader": 1, "replicas": [1], "isr": [1]},
+                ],
+            }
+        ]
         result = self.connector.get_partitions("t1")
         self.assertEqual(result["partitions_count"], 2)
         self.assertEqual(result["topic"], "t1")
@@ -249,7 +252,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
 
     # ---- Producer lifecycle ----
 
-    @patch('src.service.AIOKafkaProducer')
+    @patch("src.service.AIOKafkaProducer")
     async def test_get_or_create_producer_reuses_open(self, MockProducer):
         mock_producer = AsyncMock()
         mock_producer._closed = False
@@ -258,7 +261,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sid, "sess1")
         self.assertEqual(p, mock_producer)
 
-    @patch('src.service.AIOKafkaProducer')
+    @patch("src.service.AIOKafkaProducer")
     async def test_get_or_create_producer_replaces_closed(self, MockProducer):
         closed_producer = MagicMock()
         closed_producer._closed = True
@@ -270,7 +273,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(p, new_producer)
         new_producer.start.assert_called_once()
 
-    @patch('src.service.AIOKafkaProducer')
+    @patch("src.service.AIOKafkaProducer")
     async def test_get_or_create_producer_generates_id(self, MockProducer):
         new_producer = AsyncMock()
         MockProducer.return_value = new_producer
@@ -278,7 +281,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sid.startswith("producer_"))
         new_producer.start.assert_called_once()
 
-    @patch('src.service.AIOKafkaProducer')
+    @patch("src.service.AIOKafkaProducer")
     async def test_get_or_create_producer_error(self, MockProducer):
         MockProducer.return_value = AsyncMock()
         MockProducer.return_value.start = AsyncMock(side_effect=Exception("fail"))
@@ -298,7 +301,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
 
     # ---- Consumer lifecycle ----
 
-    @patch('src.service.AIOKafkaConsumer')
+    @patch("src.service.AIOKafkaConsumer")
     async def test_get_or_create_consumer_reuses_open(self, MockConsumer):
         mock_consumer = AsyncMock()
         mock_consumer._closed = False
@@ -307,7 +310,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sid, "sess1")
         self.assertEqual(c, mock_consumer)
 
-    @patch('src.service.AIOKafkaConsumer')
+    @patch("src.service.AIOKafkaConsumer")
     async def test_get_or_create_consumer_replaces_closed(self, MockConsumer):
         closed_consumer = MagicMock()
         closed_consumer._closed = True
@@ -318,14 +321,14 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sid, "sess1")
         new_consumer.start.assert_called_once()
 
-    @patch('src.service.AIOKafkaConsumer')
+    @patch("src.service.AIOKafkaConsumer")
     async def test_get_or_create_consumer_generates_id(self, MockConsumer):
         new_consumer = AsyncMock()
         MockConsumer.return_value = new_consumer
         sid, c = await self.connector.get_or_create_consumer("t1")
         self.assertTrue(sid.startswith("consumer_"))
 
-    @patch('src.service.AIOKafkaConsumer')
+    @patch("src.service.AIOKafkaConsumer")
     async def test_get_or_create_consumer_error(self, MockConsumer):
         MockConsumer.return_value = AsyncMock()
         MockConsumer.return_value.start = AsyncMock(side_effect=Exception("fail"))
@@ -345,7 +348,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
 
     # ---- publish error ----
 
-    @patch('src.service.AIOKafkaProducer')
+    @patch("src.service.AIOKafkaProducer")
     async def test_publish_error(self, MockProducer):
         mock_producer = AsyncMock()
         MockProducer.return_value = mock_producer
@@ -356,7 +359,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
 
     # ---- consume error ----
 
-    @patch('src.service.AIOKafkaConsumer')
+    @patch("src.service.AIOKafkaConsumer")
     async def test_consume_error(self, MockConsumer):
         mock_consumer = AsyncMock()
         MockConsumer.return_value = mock_consumer
@@ -424,10 +427,10 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
 
     def test_serialize_value_with_schema_registry(self):
         mock_registry = MagicMock()
-        mock_registry.serialize.return_value = b'\x00\x00\x00\x00\x01avro'
+        mock_registry.serialize.return_value = b"\x00\x00\x00\x00\x01avro"
         self.connector.schema_registry = mock_registry
         result = self.connector._serialize_value("t1", {"key": "val"})
-        self.assertEqual(result, b'\x00\x00\x00\x00\x01avro')
+        self.assertEqual(result, b"\x00\x00\x00\x00\x01avro")
         mock_registry.serialize.assert_called_once_with("t1", {"key": "val"})
 
     def test_serialize_value_schema_registry_returns_none(self):
@@ -442,7 +445,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         mock_registry = MagicMock()
         mock_registry.deserialize.return_value = {"decoded": True}
         self.connector.schema_registry = mock_registry
-        result = self.connector._deserialize_value("t1", b'\x00\x00\x00\x00\x01data')
+        result = self.connector._deserialize_value("t1", b"\x00\x00\x00\x00\x01data")
         self.assertEqual(result, {"decoded": True})
 
     def test_deserialize_value_schema_registry_returns_none(self):
@@ -450,7 +453,7 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         mock_registry = MagicMock()
         mock_registry.deserialize.return_value = None
         self.connector.schema_registry = mock_registry
-        result = self.connector._deserialize_value("t1", b'plain text')
+        result = self.connector._deserialize_value("t1", b"plain text")
         self.assertEqual(result, "plain text")
 
     # ---- serialize_value with schema_type hint (JSON string -> dict path) ----
@@ -458,10 +461,10 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
     def test_serialize_value_json_string_with_schema_registry(self):
         """JSON string input should be parsed to dict, then schema registry is tried."""
         mock_registry = MagicMock()
-        mock_registry.serialize.return_value = b'avro_bytes'
+        mock_registry.serialize.return_value = b"avro_bytes"
         self.connector.schema_registry = mock_registry
         result = self.connector._serialize_value("t1", '{"name": "Alice"}')
-        self.assertEqual(result, b'avro_bytes')
+        self.assertEqual(result, b"avro_bytes")
 
 
 if __name__ == "__main__":

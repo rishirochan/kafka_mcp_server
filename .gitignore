@@ -18,3 +18,14 @@ test/test.py
 .coverage
 coverage.xml
 htmlcov/
+
+# Local configuration
+.claude
+.vscode/
+.ruff_cache/
+.pytest_cache/
+.agent/
+
+# Kafka Infrastructure Data
+infra/kafka_data/
+infra/kafka_logs/

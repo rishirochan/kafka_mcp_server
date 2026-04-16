@@ -417,6 +417,7 @@ class KafkaConnector:
                 bootstrap_servers=self.bootstrap_servers,
                 group_id=group_id,
                 enable_auto_commit=True,
+                auto_offset_reset="earliest",
             )
             await self.consumers[session_id].start()
             logger.info(

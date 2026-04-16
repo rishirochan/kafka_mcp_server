@@ -4,7 +4,11 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.validation import validate_topic_name, validate_message_value, validate_schema_json
+from src.validation import (
+    validate_topic_name,
+    validate_message_value,
+    validate_schema_json,
+)
 
 
 class TestValidateTopicName(unittest.TestCase):
@@ -51,7 +55,7 @@ class TestValidateSchemaJson(unittest.TestCase):
         validate_schema_json('{"type": "string"}')  # should not raise
 
     def test_valid_json_array(self):
-        validate_schema_json('[1, 2, 3]')  # should not raise
+        validate_schema_json("[1, 2, 3]")  # should not raise
 
     def test_invalid_json(self):
         with self.assertRaises(ValueError, msg="not valid JSON"):

@@ -254,12 +254,15 @@ class TestKafkaHeaderMiddleware(unittest.TestCase):
         app.add_middleware(KafkaHeaderMiddleware)
         client = TestClient(app)
 
-        resp = client.get("/", headers={
-            "x-kafka-bootstrap-servers": "broker:9092",
-            "x-kafka-api-key": "my-key",
-            "x-kafka-api-secret": "my-secret",
-            "x-schema-registry-url": "http://registry:8081",
-        })
+        resp = client.get(
+            "/",
+            headers={
+                "x-kafka-bootstrap-servers": "broker:9092",
+                "x-kafka-api-key": "my-key",
+                "x-kafka-api-secret": "my-secret",
+                "x-schema-registry-url": "http://registry:8081",
+            },
+        )
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["bootstrap_servers"], "broker:9092")

@@ -1,9 +1,11 @@
 import pathlib
+import json
 import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 README_PATH = ROOT / "README.md"
+SERVER_JSON_PATH = ROOT / "server.json"
 
 
 TOOLS = [
@@ -46,6 +48,12 @@ class TestReadmeSurface(unittest.TestCase):
     def test_readme_mentions_byok_setting(self):
         readme = README_PATH.read_text()
         self.assertIn("`REQUIRE_BYOK`", readme)
+
+    def test_server_json_mentions_byok_setting(self):
+        server_manifest = json.loads(SERVER_JSON_PATH.read_text())
+        env_vars = server_manifest["packages"][0]["environmentVariables"]
+        env_var_names = {entry["name"] for entry in env_vars}
+        self.assertIn("REQUIRE_BYOK", env_var_names)
 
 
 if __name__ == "__main__":

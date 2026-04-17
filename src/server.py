@@ -190,7 +190,7 @@ async def configure_kafka(
     "disconnect_kafka",
     description="Tear down the per-session Kafka connection established by configure_kafka. "
     "Closes all producers, consumers, and the admin client for this session.",
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True),
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False),
 )
 async def disconnect_kafka(ctx: Context[ServerSession, AppContext]):
     """Close and remove the BYOK Kafka connection for the current session.

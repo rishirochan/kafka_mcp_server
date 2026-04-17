@@ -37,6 +37,13 @@
           "isRequired": false,
           "format": "string",
           "isSecret": false
+        },
+        {
+          "name": "REQUIRE_BYOK",
+          "description": "Set to true to disable the global connector and require clients to call configure_kafka for each session.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
         }
       ]
     }

@@ -13,7 +13,7 @@ from mcp.server.session import ServerSession
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from src.service import KafkaConnector, KafkaServiceError
+from src.service import KafkaConnector
 from src.validation import (
     validate_message_value,
     validate_positive_int,

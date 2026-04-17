@@ -6,7 +6,7 @@ import os
 # Ensure src is in path so we can import from src.service
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.service import KafkaConnector
+from src.service import KafkaConnector, KafkaServiceError
 
 
 class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
@@ -23,8 +23,9 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
 
     def test_get_topics_failure(self):
         self.mock_admin_client.list_topics.side_effect = Exception("Kafka Error")
-        topics = self.connector.get_topics()
-        self.assertIsNone(topics)
+        with self.assertRaises(KafkaServiceError) as cm:
+            self.connector.get_topics()
+        self.assertIn("Listing Kafka topics failed", str(cm.exception))
 
     def test_is_topic_exists(self):
         self.mock_admin_client.list_topics.return_value = ["topic1"]
@@ -187,13 +188,15 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
 
     def test_describe_topic_none(self):
         self.mock_admin_client.describe_topics.return_value = None
-        result = self.connector.describe_topic("t1")
-        self.assertIsNone(result)
+        with self.assertRaises(KafkaServiceError) as cm:
+            self.connector.describe_topic("t1")
+        self.assertIn("Topic 't1' was not found", str(cm.exception))
 
     def test_describe_topic_error(self):
         self.mock_admin_client.describe_topics.side_effect = Exception("fail")
-        result = self.connector.describe_topic("t1")
-        self.assertIsNone(result)
+        with self.assertRaises(KafkaServiceError) as cm:
+            self.connector.describe_topic("t1")
+        self.assertIn("Describing topic 't1' failed", str(cm.exception))
 
     # ---- get_partitions ----
 
@@ -214,41 +217,46 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
 
     def test_get_partitions_no_metadata(self):
         self.mock_admin_client.describe_topics.return_value = None
-        result = self.connector.get_partitions("t1")
-        self.assertIsNone(result)
+        with self.assertRaises(KafkaServiceError) as cm:
+            self.connector.get_partitions("t1")
+        self.assertIn("Topic 't1' was not found", str(cm.exception))
 
     def test_get_partitions_error(self):
         self.mock_admin_client.describe_topics.side_effect = Exception("fail")
-        result = self.connector.get_partitions("t1")
-        self.assertIsNone(result)
+        with self.assertRaises(KafkaServiceError) as cm:
+            self.connector.get_partitions("t1")
+        self.assertIn("Describing topic 't1' failed", str(cm.exception))
 
     # ---- get_topics edge case ----
 
     def test_get_topics_empty(self):
         self.mock_admin_client.list_topics.return_value = []
         result = self.connector.get_topics()
-        self.assertIsNone(result)
+        self.assertEqual(result, [])
 
     # ---- create_topic error ----
 
     def test_create_topic_error(self):
         self.mock_admin_client.list_topics.return_value = []
         self.mock_admin_client.create_topics.side_effect = Exception("fail")
-        result = self.connector.create_topic("new_topic")
-        self.assertFalse(result)
+        with self.assertRaises(KafkaServiceError) as cm:
+            self.connector.create_topic("new_topic")
+        self.assertIn("Creating topic 'new_topic' failed", str(cm.exception))
 
     # ---- delete_topic error ----
 
     def test_delete_topic_error(self):
         self.mock_admin_client.list_topics.return_value = ["t1"]
         self.mock_admin_client.delete_topics.side_effect = Exception("fail")
-        result = self.connector.delete_topic("t1")
-        self.assertFalse(result)
+        with self.assertRaises(KafkaServiceError) as cm:
+            self.connector.delete_topic("t1")
+        self.assertIn("Deleting topic 't1' failed", str(cm.exception))
 
     def test_delete_topic_exists_check_error(self):
         self.mock_admin_client.list_topics.side_effect = Exception("fail")
-        result = self.connector.delete_topic("t1")
-        self.assertFalse(result)
+        with self.assertRaises(KafkaServiceError) as cm:
+            self.connector.delete_topic("t1")
+        self.assertIn("Listing Kafka topics failed", str(cm.exception))
 
     # ---- Producer lifecycle ----
 
@@ -285,8 +293,9 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
     async def test_get_or_create_producer_error(self, MockProducer):
         MockProducer.return_value = AsyncMock()
         MockProducer.return_value.start = AsyncMock(side_effect=Exception("fail"))
-        result = await self.connector.get_or_create_producer("sess1")
-        self.assertIsNone(result)
+        with self.assertRaises(KafkaServiceError) as cm:
+            await self.connector.get_or_create_producer("sess1")
+        self.assertIn("Creating Kafka producer failed", str(cm.exception))
 
     async def test_close_producer_not_found(self):
         result = await self.connector.close_producer("nonexistent")
@@ -332,8 +341,9 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
     async def test_get_or_create_consumer_error(self, MockConsumer):
         MockConsumer.return_value = AsyncMock()
         MockConsumer.return_value.start = AsyncMock(side_effect=Exception("fail"))
-        result = await self.connector.get_or_create_consumer("t1")
-        self.assertIsNone(result)
+        with self.assertRaises(KafkaServiceError) as cm:
+            await self.connector.get_or_create_consumer("t1")
+        self.assertIn("Creating Kafka consumer failed", str(cm.exception))
 
     async def test_close_consumer_not_found(self):
         result = await self.connector.close_consumer("nonexistent")
@@ -364,8 +374,9 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         mock_consumer = AsyncMock()
         MockConsumer.return_value = mock_consumer
         mock_consumer.getmany = AsyncMock(side_effect=Exception("consume failed"))
-        result = await self.connector.consume("t1")
-        self.assertIsNone(result)
+        with self.assertRaises(KafkaServiceError) as cm:
+            await self.connector.consume("t1")
+        self.assertIn("Consuming from topic 't1' failed", str(cm.exception))
 
     # ---- close (shutdown) ----
 

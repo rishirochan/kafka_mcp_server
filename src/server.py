@@ -13,7 +13,7 @@ from mcp.server.session import ServerSession
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from src.service import KafkaConnector
+from src.service import KafkaConnector, KafkaServiceError
 from src.validation import (
     validate_message_value,
     validate_positive_int,
@@ -29,6 +29,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 REQUIRE_BYOK = os.getenv("REQUIRE_BYOK", "false").lower() in ("true", "1", "yes")
+
+
+def _tool_error(message: str) -> dict:
+    """Return a consistent error payload for MCP tools."""
+    return {"status": "error", "message": message}
 
 
 @dataclass
@@ -224,7 +229,10 @@ def get_topics(ctx: Context[ServerSession, AppContext]):
     Returns:
         List[str]: List of topics
     """
-    return _kafka(ctx).get_topics()
+    try:
+        return _kafka(ctx).get_topics()
+    except Exception as e:
+        return _tool_error(str(e))
 
 
 @mcp_server.tool(
@@ -241,7 +249,10 @@ def describe_topic(ctx: Context[ServerSession, AppContext], topic_name: str):
         Dict[str,Any]: Dict with status and topic details
     """
     validate_topic_name(topic_name)
-    return _kafka(ctx).describe_topic(topic_name)
+    try:
+        return _kafka(ctx).describe_topic(topic_name)
+    except Exception as e:
+        return _tool_error(str(e))
 
 
 @mcp_server.tool(
@@ -258,7 +269,10 @@ def get_partitions(ctx: Context[ServerSession, AppContext], topic_name: str):
         Dict[str,Any]: Dict with status and list of partitions
     """
     validate_topic_name(topic_name)
-    return _kafka(ctx).get_partitions(topic_name)
+    try:
+        return _kafka(ctx).get_partitions(topic_name)
+    except Exception as e:
+        return _tool_error(str(e))
 
 
 @mcp_server.tool(
@@ -309,9 +323,12 @@ def create_topic(
     validate_topic_name(topic_name)
     validate_positive_int(num_partitions, "num_partitions")
     validate_positive_int(replication_factor, "replication_factor")
-    return _kafka(ctx).create_topic(
-        topic_name, num_partitions, replication_factor, configs
-    )
+    try:
+        return _kafka(ctx).create_topic(
+            topic_name, num_partitions, replication_factor, configs
+        )
+    except Exception as e:
+        return _tool_error(str(e))
 
 
 @mcp_server.tool(
@@ -341,7 +358,10 @@ async def delete_topic(ctx: Context[ServerSession, AppContext], topic_name: str)
     except Exception:
         # Client does not support elicitation — proceed without confirmation
         pass
-    return _kafka(ctx).delete_topic(topic_name)
+    try:
+        return _kafka(ctx).delete_topic(topic_name)
+    except Exception as e:
+        return _tool_error(str(e))
 
 
 @mcp_server.tool(
@@ -404,7 +424,10 @@ async def consume(
     await ctx.log(
         "info", f"Consuming from '{topic_name}' (group={group_id}, max={max_messages})"
     )
-    return await _kafka(ctx).consume(topic_name, group_id, session_id, max_messages)
+    try:
+        return await _kafka(ctx).consume(topic_name, group_id, session_id, max_messages)
+    except Exception as e:
+        return _tool_error(str(e))
 
 
 # ============================================================================
@@ -557,8 +580,11 @@ async def delete_schema(ctx: Context[ServerSession, AppContext], subject: str):
 )
 async def resource_topics() -> str:
     """Return all topic names as a JSON array."""
-    topics = _kafka().get_topics() or []
-    return json.dumps(topics)
+    try:
+        topics = _kafka().get_topics()
+        return json.dumps(topics)
+    except Exception as e:
+        return json.dumps(_tool_error(str(e)))
 
 
 @mcp_server.resource(
@@ -569,8 +595,11 @@ async def resource_topics() -> str:
 )
 async def resource_topic_detail(topic_name: str) -> str:
     """Return partition details for a specific topic."""
-    detail = _kafka().get_partitions(topic_name)
-    return json.dumps(detail)
+    try:
+        detail = _kafka().get_partitions(topic_name)
+        return json.dumps(detail)
+    except Exception as e:
+        return json.dumps(_tool_error(str(e)))
 
 
 @mcp_server.resource(

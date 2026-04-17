@@ -17,6 +17,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class KafkaServiceError(Exception):
+    """Raised when a Kafka operation fails in a way agents should see clearly."""
+
+
 class KafkaConnector:
     """
     Encapsulates the connection to a kafka server and all the methods to interact with it.
@@ -133,6 +137,11 @@ class KafkaConnector:
     # Topic Management Tools
     # ============================================================================
 
+    def _raise_operation_error(self, operation: str, exc: Exception) -> None:
+        """Raise a natural-language service error for operational failures."""
+        logger.error("%s: %s", operation, exc)
+        raise KafkaServiceError(f"{operation} failed: {exc}") from exc
+
     def get_topics(self):
         """Get a list of all topics in the cluster.
 
@@ -141,13 +150,9 @@ class KafkaConnector:
         """
         try:
             topics = self.admin_client.list_topics()
-            if topics:
-                return topics
-            else:
-                return None
+            return topics or []
         except Exception as e:
-            logger.error(f"Error listing topics: {e}")
-            return None
+            self._raise_operation_error("Listing Kafka topics", e)
 
     def describe_topic(self, topic: str):
         """Describe a topic details.
@@ -159,13 +164,15 @@ class KafkaConnector:
         """
         try:
             topic_info = self.admin_client.describe_topics([topic])
-            if topic_info:
-                return topic_info
-            else:
-                return None
+            if not topic_info:
+                raise KafkaServiceError(
+                    f"Topic '{topic}' was not found or returned no metadata."
+                )
+            return topic_info
+        except KafkaServiceError:
+            raise
         except Exception as e:
-            logger.error(f"Describe_Topic:Error describing topic {topic}: {e}")
-            return None
+            self._raise_operation_error(f"Describing topic '{topic}'", e)
 
     def get_partitions(self, topic: str):
         """Get a list of all partitions for a topic.
@@ -175,33 +182,36 @@ class KafkaConnector:
         """
         try:
             metadata = self.describe_topic(topic)
-            if metadata:
-                logger.info(f"get_partitions: Metadata for topic {topic}: {metadata}")
-                partitions_info = []
-                for partition in metadata[0].get("partitions"):
-                    partitions_info.append(
-                        {
-                            "partition_id": partition.get("partition"),
-                            "leader": partition.get("leader"),
-                            "replicas": partition.get("replicas"),
-                            "isr": partition.get("isr"),
-                        }
-                    )
+            logger.info(f"get_partitions: Metadata for topic {topic}: {metadata}")
+            topic_metadata = metadata[0]
+            partitions = topic_metadata.get("partitions") or []
+            partitions_info = []
+            for partition in partitions:
+                partitions_info.append(
+                    {
+                        "partition_id": partition.get("partition"),
+                        "leader": partition.get("leader"),
+                        "replicas": partition.get("replicas"),
+                        "isr": partition.get("isr"),
+                    }
+                )
 
-                topic_details = {
-                    "topic": topic,
-                    "partitions": partitions_info,
-                    "partitions_count": len(partitions_info),
-                    "replication_factor": partitions_info[0].get("replicas").__len__(),
-                }
-                return topic_details
-            else:
-                return None
+            replication_factor = 0
+            if partitions_info:
+                replication_factor = len(partitions_info[0].get("replicas") or [])
+
+            return {
+                "topic": topic,
+                "partitions": partitions_info,
+                "partitions_count": len(partitions_info),
+                "replication_factor": replication_factor,
+            }
+        except KafkaServiceError:
+            raise
         except Exception as e:
-            logger.error(
-                f"get_partitions: Error listing partitions for topic {topic}: {e}"
+            self._raise_operation_error(
+                f"Fetching partition metadata for topic '{topic}'", e
             )
-            return None
 
     def is_topic_exists(self, topic: str):
         """Check if a topic exists.
@@ -212,15 +222,11 @@ class KafkaConnector:
         """
         try:
             topics = self.get_topics()
-            if topics:
-                return True if topic in topics else False
-            else:
-                return False
+            return topic in topics
+        except KafkaServiceError:
+            raise
         except Exception as e:
-            logger.error(
-                f"is_topic_exists: Error checking if topic {topic} exists: {e}"
-            )
-            return False
+            self._raise_operation_error(f"Checking whether topic '{topic}' exists", e)
 
     def create_topic(
         self,
@@ -249,9 +255,10 @@ class KafkaConnector:
             else:
                 logger.info(f"create_topic: Topic {topic} already exists")
                 return False
+        except KafkaServiceError:
+            raise
         except Exception as e:
-            logger.error(f"create_topic: Error creating topic {topic}: {e}")
-            return False
+            self._raise_operation_error(f"Creating topic '{topic}'", e)
 
     def delete_topic(self, topic: str):
         """Delete a topic.
@@ -265,14 +272,14 @@ class KafkaConnector:
                     logger.info(f"delete_topic: Topic {topic} deleted successfully")
                     return True
                 except Exception as e:
-                    logger.error(f"delete_topic: Error deleting topic {topic}: {e}")
-                    return False
+                    self._raise_operation_error(f"Deleting topic '{topic}'", e)
             else:
                 logger.info(f"delete_topic: Topic {topic} does not exist")
                 return False
+        except KafkaServiceError:
+            raise
         except Exception as e:
-            logger.error(f"delete_topic: Error deleting topic {topic}: {e}")
-            return False
+            self._raise_operation_error(f"Deleting topic '{topic}'", e)
 
     # ======================================================
     # Producer Management Tools
@@ -311,8 +318,7 @@ class KafkaConnector:
             )
             return session_id, self.producers[session_id]
         except Exception as e:
-            logger.error(f"get_or_create_producer: Error creating producer: {e}")
-            return None
+            self._raise_operation_error("Creating Kafka producer", e)
 
     async def close_producer(self, session_id: str) -> None:
         """Close the Kafka producer.
@@ -373,11 +379,14 @@ class KafkaConnector:
                 "offset": metadata.offset,
                 "timestamp": metadata.timestamp,
             }
+        except KafkaServiceError as e:
+            return {"status": "error", "message": str(e)}
         except Exception as e:
             logger.error(f"publish: Error publishing message: {e}")
             return {"status": "error", "message": f"Failed to publish: {str(e)}"}
         finally:
-            await self.close_producer(session_id)
+            if session_id is not None:
+                await self.close_producer(session_id)
 
     # ======================================================
     # Consumer Management Tools
@@ -431,8 +440,7 @@ class KafkaConnector:
 
             return session_id, self.consumers[session_id]
         except Exception as e:
-            logger.error(f"get_or_create_consumer: Error creating consumer: {e}")
-            return None
+            self._raise_operation_error("Creating Kafka consumer", e)
 
     async def close_consumer(self, session_id: str):
         """Close the Kafka consumer.
@@ -470,13 +478,12 @@ class KafkaConnector:
             session_id: Optional session ID for consumer reuse
             max_messages: Maximum number of messages to return
         """
-        session_id, consumer = await self.get_or_create_consumer(
-            topic, group_id, session_id
-        )
-
-        messages = []
-
         try:
+            session_id, consumer = await self.get_or_create_consumer(
+                topic, group_id, session_id
+            )
+            messages = []
+
             # Get a batch of messages with timeout
             batch = await consumer.getmany(timeout_ms=5000, max_records=max_messages)
 
@@ -489,14 +496,14 @@ class KafkaConnector:
                     messages.append(deserialized)
 
             return messages
-
+        except KafkaServiceError:
+            raise
         except Exception as e:
-            logger.error(f"consume: Error consuming messages: {e}")
-            return None
-
+            self._raise_operation_error(f"Consuming from topic '{topic}'", e)
         finally:
             # Close consumer
-            await self.close_consumer(session_id)
+            if session_id is not None:
+                await self.close_consumer(session_id)
 
     async def close(self):
         """Close all producers, consumers, and the admin client.

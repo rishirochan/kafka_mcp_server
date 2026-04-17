@@ -178,6 +178,15 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
         result = get_topics(ctx)
         self.assertEqual(result, ["topic-a", "topic-b"])
 
+    def test_get_topics_returns_actionable_error(self):
+        from src.server import get_topics
+
+        ctx, connector = _make_ctx()
+        connector.get_topics.side_effect = Exception("broker unavailable")
+        result = get_topics(ctx)
+        self.assertEqual(result["status"], "error")
+        self.assertIn("broker unavailable", result["message"])
+
     def test_describe_topic(self):
         from src.server import describe_topic
 
@@ -187,6 +196,15 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["topic"], "my-topic")
         connector.describe_topic.assert_called_once_with("my-topic")
 
+    def test_describe_topic_returns_actionable_error(self):
+        from src.server import describe_topic
+
+        ctx, connector = _make_ctx()
+        connector.describe_topic.side_effect = Exception("topic missing")
+        result = describe_topic(ctx, "my-topic")
+        self.assertEqual(result["status"], "error")
+        self.assertIn("topic missing", result["message"])
+
     def test_get_partitions(self):
         from src.server import get_partitions
 
@@ -195,6 +213,15 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
         result = get_partitions(ctx, "my-topic")
         self.assertEqual(result["partitions_count"], 3)
         connector.get_partitions.assert_called_once_with("my-topic")
+
+    def test_get_partitions_returns_actionable_error(self):
+        from src.server import get_partitions
+
+        ctx, connector = _make_ctx()
+        connector.get_partitions.side_effect = Exception("auth failed")
+        result = get_partitions(ctx, "my-topic")
+        self.assertEqual(result["status"], "error")
+        self.assertIn("auth failed", result["message"])
 
     def test_is_topic_exists_true(self):
         from src.server import is_topic_exists
@@ -221,6 +248,15 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
             "new-topic", 3, 1, {"retention.ms": "1000"}
         )
 
+    def test_create_topic_returns_actionable_error(self):
+        from src.server import create_topic
+
+        ctx, connector = _make_ctx()
+        connector.create_topic.side_effect = Exception("broker unavailable")
+        result = create_topic(ctx, "new-topic", 3, 1, {"retention.ms": "1000"})
+        self.assertEqual(result["status"], "error")
+        self.assertIn("broker unavailable", result["message"])
+
     async def test_delete_topic_confirmed(self):
         from src.server import delete_topic
 
@@ -233,6 +269,19 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
         result = await delete_topic(ctx, "doomed-topic")
         self.assertTrue(result)
         connector.delete_topic.assert_called_once_with("doomed-topic")
+
+    async def test_delete_topic_returns_actionable_error(self):
+        from src.server import delete_topic
+
+        ctx, connector = _make_ctx()
+        connector.delete_topic.side_effect = Exception("delete failed")
+        elicit_result = MagicMock()
+        elicit_result.action = "accept"
+        elicit_result.content = {"confirmed": True}
+        ctx.elicit = AsyncMock(return_value=elicit_result)
+        result = await delete_topic(ctx, "doomed-topic")
+        self.assertEqual(result["status"], "error")
+        self.assertIn("delete failed", result["message"])
 
     async def test_delete_topic_cancelled(self):
         from src.server import delete_topic
@@ -288,6 +337,16 @@ class TestToolHappyPaths(unittest.IsolatedAsyncioTestCase):
         result = await consume(ctx, "my-topic", "grp", "sess1", 5)
         self.assertEqual(result, ["msg1", "msg2"])
         connector.consume.assert_called_once_with("my-topic", "grp", "sess1", 5)
+
+    async def test_consume_returns_actionable_error(self):
+        from src.server import consume
+
+        ctx, connector = _make_ctx()
+        connector.consume = AsyncMock(side_effect=Exception("broker unavailable"))
+        ctx.log = AsyncMock()
+        result = await consume(ctx, "my-topic", "grp", "sess1", 5)
+        self.assertEqual(result["status"], "error")
+        self.assertIn("broker unavailable", result["message"])
 
     async def test_delete_schema_confirmed(self):
         from src.server import delete_schema

@@ -1,9 +1,22 @@
+[build-system]
+requires = ["setuptools>=80.9.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "kafka-mcp-server"
 version = "0.1.0"
-description = "Add your description here"
+description = "MCP server for Kafka topic management, publishing, consumption, and Schema Registry workflows."
 readme = "README.md"
 requires-python = ">=3.13"
+keywords = ["mcp", "kafka", "model-context-protocol", "schema-registry"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+]
 dependencies = [
     "aiokafka>=0.13.0",
     "asyncio>=4.0.0",
@@ -16,6 +29,14 @@ dependencies = [
     "jsonschema>=4.0.0",
     "uvicorn>=0.30.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/rishirochan/kafka_mcp_server"
+Repository = "https://github.com/rishirochan/kafka_mcp_server"
+Issues = "https://github.com/rishirochan/kafka_mcp_server/issues"
+
+[project.scripts]
+kafka-mcp-server = "src.main:main"
 
 [project.optional-dependencies]
 agent = [
@@ -37,6 +58,13 @@ dev = [
     "pytest-timeout>=2.0.0",
     "starlette>=0.27.0",
 ]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

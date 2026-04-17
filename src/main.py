@@ -7,7 +7,8 @@ from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv())
 
-# Ensure src is in path so we can import from src.service
+# Ensure the repo root is on the path so package imports work when
+# this file is executed as `python src/main.py`.
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 COMPOSE_FILE = os.path.abspath(
@@ -15,6 +16,7 @@ COMPOSE_FILE = os.path.abspath(
 )
 KAFKA_CONTAINER = "kafka"
 KAFKA_READY_TIMEOUT = 30  # seconds
+AUTO_START_KAFKA_ENV_VAR = "AUTO_START_LOCAL_KAFKA"
 
 
 def _is_kafka_running() -> bool:
@@ -77,6 +79,12 @@ def ensure_kafka_running():
         raise RuntimeError(f"Failed to start Kafka via Docker Compose: {e}") from e
 
 
+def should_auto_start_kafka() -> bool:
+    """Return True when local Kafka auto-start is explicitly enabled."""
+    value = os.getenv(AUTO_START_KAFKA_ENV_VAR, "false").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def main():
     """
     Main entry point for the mcp-server-kafka script.
@@ -94,19 +102,17 @@ def main():
 
     # Import is done here to make sure environment variables are loaded
     # only after we make the changes.
-    from server import mcp_server
+    from src.server import mcp_server
 
-    # Check if the Kafka Docker container is running; start it if not.
-    ensure_kafka_running()
+    if should_auto_start_kafka():
+        ensure_kafka_running()
 
     # For SSE transport, add middleware and run with uvicorn
     if args.transport == "sse":
         import uvicorn
-        from auth import APIKeyMiddleware, KafkaHeaderMiddleware
+        from src.auth import APIKeyMiddleware
 
         app = mcp_server.sse_app()
-        # KafkaHeaderMiddleware extracts X-Kafka-* headers for BYOK
-        app.add_middleware(KafkaHeaderMiddleware)
         if os.getenv("MCP_API_KEY"):
             app.add_middleware(APIKeyMiddleware)
         uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("MCP_SSE_PORT", "8000")))

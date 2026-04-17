@@ -1,4 +1,4 @@
-"""SSE API key guard and Kafka header extraction middleware."""
+"""SSE API key guard and deferred header-extraction middleware."""
 
 import os
 
@@ -36,15 +36,16 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
 
 class KafkaHeaderMiddleware(BaseHTTPMiddleware):
-    """Extract Kafka-related headers and attach them to request.state.
+    """Extract Kafka-related headers for future SSE session configuration.
 
     Supported headers:
       - X-Kafka-Bootstrap-Servers
       - X-Kafka-API-Key / X-Kafka-API-Secret (reserved for SASL)
       - X-Schema-Registry-URL
 
-    These values are stored on request.state.kafka_config as a dict
-    so downstream SSE handlers can access them for BYOK session setup.
+    The extracted values are stored on request.state.kafka_config so
+    future SSE session wiring can consume them. This middleware is
+    intentionally not attached in the current runtime path.
     """
 
     async def dispatch(self, request: Request, call_next):

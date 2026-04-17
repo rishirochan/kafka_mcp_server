@@ -1,7 +1,7 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -70,6 +70,26 @@ class TestAPIKeyMiddleware(unittest.TestCase):
         client = TestClient(_make_app())
         resp = client.get("/", headers={"authorization": "Basic abc123"})
         self.assertEqual(resp.status_code, 401)
+
+
+class TestSSEWiring(unittest.TestCase):
+    @patch("src.main.should_auto_start_kafka", return_value=False)
+    @patch("uvicorn.run")
+    @patch("src.server.mcp_server.sse_app")
+    @patch.dict(os.environ, {"MCP_API_KEY": "secret-key-123"}, clear=False)
+    def test_sse_transport_attaches_only_api_key_middleware(
+        self, mock_sse_app, mock_uvicorn_run, _
+    ):
+        from src.main import main
+
+        app = MagicMock()
+        mock_sse_app.return_value = app
+
+        with patch.object(sys, "argv", ["main.py", "--transport", "sse"]):
+            main()
+
+        app.add_middleware.assert_called_once_with(APIKeyMiddleware)
+        mock_uvicorn_run.assert_called_once()
 
 
 if __name__ == "__main__":

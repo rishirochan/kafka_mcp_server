@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 from src.service import KafkaConnector
 from src.validation import (
     validate_message_value,
+    validate_positive_int,
+    validate_publish_schema_type,
     validate_schema_json,
     validate_topic_name,
 )
@@ -305,6 +307,8 @@ def create_topic(
         bool: True if the topic was created, False otherwise
     """
     validate_topic_name(topic_name)
+    validate_positive_int(num_partitions, "num_partitions")
+    validate_positive_int(replication_factor, "replication_factor")
     return _kafka(ctx).create_topic(
         topic_name, num_partitions, replication_factor, configs
     )
@@ -342,7 +346,7 @@ async def delete_topic(ctx: Context[ServerSession, AppContext], topic_name: str)
 
 @mcp_server.tool(
     "publish",
-    description="Publish one message to a Kafka topic. If Schema Registry is configured and a subject exists for this topic, the value is Avro-encoded automatically. Pass value as a JSON string for Avro topics.",
+    description="Publish one message to a Kafka topic. If Schema Registry is configured and a subject exists for this topic, the value is Avro-encoded automatically. Pass value as a JSON string for Avro topics. If schema_type='AVRO' is provided explicitly, Avro encoding is required.",
     annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False),
 )
 async def publish(
@@ -365,6 +369,7 @@ async def publish(
     """
     validate_topic_name(topic_name)
     validate_message_value(value)
+    schema_type = validate_publish_schema_type(schema_type)
     await ctx.log("info", f"Publishing to topic '{topic_name}'")
     return await _kafka(ctx).publish(topic_name, value, key, session_id, schema_type)
 
@@ -372,7 +377,7 @@ async def publish(
 @mcp_server.tool(
     "consume",
     description="Poll a Kafka topic for up to max_messages messages within a 5-second window. Returns a list of deserialized message values. Returns an empty list if no messages are available.",
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True),
+    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
 )
 async def consume(
     ctx: Context[ServerSession, AppContext],

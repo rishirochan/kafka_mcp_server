@@ -7,6 +7,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.validation import (
     validate_topic_name,
     validate_message_value,
+    validate_positive_int,
+    validate_publish_schema_type,
     validate_schema_json,
 )
 
@@ -64,6 +66,32 @@ class TestValidateSchemaJson(unittest.TestCase):
     def test_empty_string(self):
         with self.assertRaises(ValueError):
             validate_schema_json("")
+
+
+class TestValidatePositiveInt(unittest.TestCase):
+    def test_accepts_positive_values(self):
+        validate_positive_int(1, "num_partitions")
+        validate_positive_int(3, "replication_factor")
+
+    def test_rejects_zero(self):
+        with self.assertRaises(ValueError):
+            validate_positive_int(0, "num_partitions")
+
+    def test_rejects_negative(self):
+        with self.assertRaises(ValueError):
+            validate_positive_int(-1, "replication_factor")
+
+
+class TestValidatePublishSchemaType(unittest.TestCase):
+    def test_none_is_allowed(self):
+        self.assertIsNone(validate_publish_schema_type(None))
+
+    def test_normalizes_avro(self):
+        self.assertEqual(validate_publish_schema_type("avro"), "AVRO")
+
+    def test_rejects_unsupported_types(self):
+        with self.assertRaises(ValueError):
+            validate_publish_schema_type("json")
 
 
 if __name__ == "__main__":

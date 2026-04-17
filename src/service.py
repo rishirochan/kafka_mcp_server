@@ -77,6 +77,11 @@ class KafkaConnector:
             if result is not None:
                 return result
 
+        if schema_type == "AVRO":
+            raise ValueError(
+                f"schema_type='AVRO' requires a registered schema for topic '{topic}'."
+            )
+
         # Fallback: JSON for dicts, string for everything else
         if isinstance(value, dict):
             return json.dumps(value).encode("utf-8")

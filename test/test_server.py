@@ -129,6 +129,20 @@ class TestToolInputValidation(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             create_topic(ctx, "a" * 250)
 
+    def test_create_topic_rejects_zero_partitions(self):
+        from src.server import create_topic
+
+        ctx, _ = _make_ctx()
+        with self.assertRaises(ValueError):
+            create_topic(ctx, "valid-topic", 0, 1)
+
+    def test_create_topic_rejects_zero_replication_factor(self):
+        from src.server import create_topic
+
+        ctx, _ = _make_ctx()
+        with self.assertRaises(ValueError):
+            create_topic(ctx, "valid-topic", 1, 0)
+
     async def test_publish_rejects_oversized_message(self):
         from src.server import publish
 
@@ -136,6 +150,14 @@ class TestToolInputValidation(unittest.IsolatedAsyncioTestCase):
         ctx.log = AsyncMock()
         with self.assertRaises(ValueError):
             await publish(ctx, "valid-topic", "x" * 1_048_577)
+
+    async def test_publish_rejects_unsupported_schema_type(self):
+        from src.server import publish
+
+        ctx, _ = _make_ctx()
+        ctx.log = AsyncMock()
+        with self.assertRaises(ValueError):
+            await publish(ctx, "valid-topic", '{"name":"alice"}', schema_type="JSON")
 
     def test_register_schema_rejects_invalid_json(self):
         from src.server import register_schema

@@ -466,6 +466,13 @@ class TestKafkaConnectorUnit(unittest.IsolatedAsyncioTestCase):
         result = self.connector._serialize_value("t1", '{"name": "Alice"}')
         self.assertEqual(result, b"avro_bytes")
 
+    def test_serialize_value_explicit_avro_requires_registered_schema(self):
+        mock_registry = MagicMock()
+        mock_registry.serialize.return_value = None
+        self.connector.schema_registry = mock_registry
+        with self.assertRaises(ValueError):
+            self.connector._serialize_value("t1", '{"name": "Alice"}', "AVRO")
+
 
 if __name__ == "__main__":
     unittest.main()
